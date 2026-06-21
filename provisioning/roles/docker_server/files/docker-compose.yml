@@ -1,0 +1,26 @@
+# =============================================================================
+# Bundled fallback NG-SOAR compose file (KMS component).
+# In a production sandbox this is replaced by the real /opt/NG-SOAR/NG-SOAR.yml
+# pulled from the artefact SMB share (see docker_server/tasks/main.yml).
+#
+# This fallback brings up the KMS (Knowledge Management System) front that
+# stores and serves CACAO playbooks/templates so the scenario is runnable
+# without the private NG-SOAR images. The CACAO Validator/Executor itself is
+# deployed by the `ng_soar` role.
+# =============================================================================
+services:
+  ng-soar-kms:
+    image: nginx:stable
+    container_name: ng-soar-kms
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "8080:80"
+    volumes:
+      - /opt/NG-SOAR/kms/www:/usr/share/nginx/html:ro
+    networks:
+      - ngsoar
+
+networks:
+  ngsoar:
+    driver: bridge

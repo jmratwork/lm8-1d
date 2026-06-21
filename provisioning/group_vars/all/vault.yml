@@ -1,0 +1,28 @@
+---
+# =============================================================================
+# SECRETS - PLACEHOLDER (encrypt with `ansible-vault encrypt`).
+# -----------------------------------------------------------------------------
+# The reference role
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/blob/central/provisioning/roles/docker_server/tasks/main.yml
+# hardcodes secrets in plaintext (a user password hash, a Docker Hub PAT, and
+# SMB/host credentials). DO NOT do that. Override these values via Ansible Vault
+# or the platform's secret injection. The defaults below are inert placeholders
+# so the playbook is syntactically runnable in a lab without real credentials.
+# =============================================================================
+
+# Docker Hub Personal Access Token used to pull private NG-SOAR images.
+dockerhub_username: "CHANGEME"
+dockerhub_pat: "CHANGEME"
+
+# SMB share that hosts the NG-SOAR / artefact bundle (matches reference role).
+smb_share_host: "10.10.30.250"
+smb_share_path: "//10.10.30.250/ngsoc"
+smb_username: "guest"
+smb_password: ""
+
+# SSH public key NG-SOAR uses to manage the lab-firewall (data-plane mgmt).
+# Replace with the real public key of the NG-SOAR executor.
+soar_fw_authorized_key: "ssh-ed25519 AAAA_CHANGEME soar-fw-executor"
+
+# Password hash for the firewall management user (mkpasswd --method=sha-512).
+fw_mgmt_user_password_hash: "!"  # locked by default; key-based auth only

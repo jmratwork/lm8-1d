@@ -1,0 +1,28 @@
+# =============================================================================
+# NG-SOAR :: CACAO Validator/Executor compose project (rendered by ng_soar role)
+# =============================================================================
+services:
+  cacao-validator-executor:
+    build: ./cacao
+    image: ng-soar/cacao-validator-executor:training
+    container_name: cacao-validator-executor
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    environment:
+      FW_HOST: "{{ fw_soar_ip }}"
+      FW_MGMT_USER: "{{ fw_mgmt_user }}"
+      ATTACKER_HOST: "{{ malicious_source_ip }}"
+      TARGET_HOST: "{{ target_service_ip }}"
+      TARGET_PORT: "{{ target_service_http_port }}"
+      EVAL_URL: "http://{{ evaluation_ip }}:9000/ingest"
+      SSH_KEY: "/keys/id_ed25519"
+    volumes:
+      - /opt/ng-soar-cacao/keys:/keys:ro
+      - /var/log/ng-soar:/var/log/ng-soar
+    networks:
+      - ngsoar
+
+networks:
+  ngsoar:
+    driver: bridge

@@ -1,0 +1,126 @@
+---
+# =============================================================================
+# role: docker_server
+# Installs Docker Engine + Compose plugin and deploys the NG-SOAR stack.
+#
+# Pattern adapted from the NG-SOC reference role:
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/blob/central/provisioning/roles/docker_server/tasks/main.yml
+#
+# Differences vs. the reference:
+#   - NO hardcoded secrets. Docker Hub PAT / SMB creds come from vault.yml.
+#   - SMB mount is best-effort; if the artefact share is unavailable the role
+#     falls back to the docker-compose.yml bundled in this role's files/.
+# =============================================================================
+
+- name: Install Docker + SMB prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - smbclient
+      - cifs-utils
+      - unzip
+    state: present
+    update_cache: true
+
+- name: Create apt keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Docker GPG key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Add Docker apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: Install Docker Engine and Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Ensure Docker is started and enabled
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Install Docker SDK for Python (for community.docker modules)
+  ansible.builtin.pip:
+    name:
+      - docker
+      - requests
+    break_system_packages: true
+
+- name: Log in to Docker Hub (only if a real PAT is provided)
+  community.docker.docker_login:
+    username: "{{ dockerhub_username }}"
+    password: "{{ dockerhub_pat }}"
+  when: dockerhub_pat is defined and dockerhub_pat != "CHANGEME"
+  no_log: true
+
+# --- Artefact share (best-effort) -------------------------------------------
+- name: Create SMB mount point
+  ansible.builtin.file:
+    path: /mnt/smb_shared
+    state: directory
+    mode: "0755"
+
+- name: Mount the artefact SMB share (best-effort)
+  ansible.posix.mount:
+    path: /mnt/smb_shared
+    src: "{{ smb_share_path }}"
+    fstype: cifs
+    opts: "guest,vers=3.0,ro"
+    state: mounted
+  register: smb_mount
+  failed_when: false
+
+# --- NG-SOAR deployment ------------------------------------------------------
+- name: Create NG-SOAR deployment directory
+  ansible.builtin.file:
+    path: /opt/NG-SOAR
+    state: directory
+    mode: "0755"
+
+- name: Copy NG-SOAR compose file from SMB share (if mounted)
+  ansible.builtin.copy:
+    src: /mnt/smb_shared/NG-SOAR.yml
+    dest: /opt/NG-SOAR/docker-compose.yml
+    remote_src: true
+    mode: "0644"
+  register: compose_from_smb
+  failed_when: false
+
+- name: Fall back to bundled NG-SOAR compose file
+  ansible.builtin.copy:
+    src: docker-compose.yml
+    dest: /opt/NG-SOAR/docker-compose.yml
+    mode: "0644"
+  when: compose_from_smb is failed or compose_from_smb is skipped or not (smb_mount.changed | default(false))
+
+- name: Deploy the NG-SOAR stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/NG-SOAR
+    build: always
+    state: present
+  register: ngsoar_compose
+
+- name: Show NG-SOAR compose result
+  ansible.builtin.debug:
+    var: ngsoar_compose

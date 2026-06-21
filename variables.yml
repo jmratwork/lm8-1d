@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# APG variables (optional). Used by the platform to generate per-sandbox
+# variant answers. For this scenario we expose the malicious test IP and the
+# protected service so they can be randomized across a pool if desired.
+#
+# NOTE: These are SCENARIO variables, NOT secrets. Real secrets (Docker Hub
+# PAT, NG-SOAR DB passwords, SMB credentials) must NOT live here in plaintext.
+# See README.md "Secrets management" and provisioning/group_vars/all/vault.yml.
+# =============================================================================
+
+# The attacker / malicious source IP that the CACAO playbook must block.
+malicious_source_ip:
+  type: "value"
+  value: "10.10.10.10"
+
+# The protected target service.
+target_service_ip:
+  type: "value"
+  value: "10.10.20.10"
+
+target_service_port:
+  type: "value"
+  value: "80"

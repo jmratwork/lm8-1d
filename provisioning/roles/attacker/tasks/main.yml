@@ -1,0 +1,66 @@
+---
+# =============================================================================
+# role: attacker
+# Generates the "suspicious traffic from a test IP" (UML step 2). The attacker's
+# IP (10.10.10.10) is the malicious source IP the CACAO playbook blocks.
+# =============================================================================
+
+- name: Install traffic-generation tools
+  ansible.builtin.apt:
+    name:
+      - curl
+      - netcat-traditional
+      - nmap
+      - hping3
+      - openssh-server
+    state: present
+    update_cache: true
+
+- name: Route target-net traffic through the Lab Firewall (forces the block path)
+  ansible.builtin.command:
+    cmd: "ip route replace {{ target_net_cidr }} via {{ fw_attacker_ip }}"
+  changed_when: false
+  failed_when: false
+
+- name: Deploy the suspicious-traffic generator
+  ansible.builtin.copy:
+    src: generate_suspicious_traffic.sh
+    dest: /usr/local/bin/generate_suspicious_traffic.sh
+    mode: "0755"
+
+- name: Install a systemd unit that drives the suspicious traffic on boot
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/suspicious-traffic.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=PUC2 2d suspicious traffic generator (UML step 2)
+      After=network-online.target
+      Wants=network-online.target
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/generate_suspicious_traffic.sh {{ target_service_ip }} {{ target_service_http_port }}
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable the suspicious-traffic service
+  ansible.builtin.systemd:
+    name: suspicious-traffic.service
+    enabled: true
+    daemon_reload: true
+    state: started
+  failed_when: false
+
+# --- NG-SOAR executor drives verification (UML 13) from this host ----------
+- name: Create NG-SOAR management user on the attacker
+  ansible.builtin.user:
+    name: "{{ fw_mgmt_user }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Authorize the NG-SOAR executor public key on the attacker
+  ansible.posix.authorized_key:
+    user: "{{ fw_mgmt_user }}"
+    state: present
+    key: "{{ hostvars[groups['ng_soar'][0]]['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"

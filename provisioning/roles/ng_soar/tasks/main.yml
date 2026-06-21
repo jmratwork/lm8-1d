@@ -1,0 +1,87 @@
+---
+# =============================================================================
+# role: ng_soar
+# KMS + CACAO Validator/Executor configuration (the CRITICAL component).
+# Covers UML steps 5, 7, 8, 10, 11, 12, 13, 14, 15 (server side).
+# =============================================================================
+
+- name: Create CACAO toolkit / executor directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/ng-soar-cacao
+    - /opt/ng-soar-cacao/cacao
+    - /opt/ng-soar-cacao/keys
+    - /opt/ng-soar-cacao/toolkit
+    - /var/log/ng-soar
+    - /opt/NG-SOAR/kms/www
+
+- name: Deploy CACAO validator/executor application code
+  ansible.builtin.copy:
+    src: "cacao/{{ item }}"
+    dest: "/opt/ng-soar-cacao/cacao/{{ item }}"
+    mode: "0644"
+  loop:
+    - app.py
+    - Dockerfile
+
+# --- UML step 5 material : templates, schema hints, supported commands -------
+- name: Publish CACAO toolkit (templates, hints, supported firewall commands)
+  ansible.builtin.copy:
+    src: "cacao-toolkit/"
+    dest: /opt/ng-soar-cacao/toolkit/
+    mode: "0644"
+
+- name: Expose the CACAO toolkit through the KMS web root (storage/retrieval)
+  ansible.builtin.copy:
+    src: "cacao-toolkit/"
+    dest: /opt/NG-SOAR/kms/www/
+    remote_src: false
+    mode: "0644"
+
+# --- SSH key the executor uses to manage the Lab Firewall / drive verification
+- name: Generate the NG-SOAR executor SSH keypair
+  community.crypto.openssh_keypair:
+    path: /opt/ng-soar-cacao/keys/id_ed25519
+    type: ed25519
+    comment: "ng-soar-cacao-executor"
+  register: soar_keypair
+
+- name: Read the executor public key
+  ansible.builtin.slurp:
+    src: /opt/ng-soar-cacao/keys/id_ed25519.pub
+  register: soar_pub_slurp
+
+- name: Publish the executor public key as a host fact (consumed by other roles)
+  ansible.builtin.set_fact:
+    soar_executor_pubkey: "{{ soar_pub_slurp.content | b64decode | trim }}"
+
+# --- Render and deploy the CACAO validator/executor compose project ---------
+- name: Render CACAO executor docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/ng-soar-cacao/docker-compose.yml
+    mode: "0644"
+
+- name: Build and start the CACAO Validator/Executor
+  community.docker.docker_compose_v2:
+    project_src: /opt/ng-soar-cacao
+    build: always
+    state: present
+  register: cacao_compose
+
+- name: Wait for the CACAO Validator/Executor API to be ready
+  ansible.builtin.uri:
+    url: http://127.0.0.1:9100/healthz
+    status_code: 200
+  register: cacao_health
+  retries: 12
+  delay: 5
+  until: cacao_health is succeeded
+  failed_when: false
+
+- name: Report CACAO Validator/Executor status
+  ansible.builtin.debug:
+    msg: "CACAO Validator/Executor health: {{ cacao_health.json | default('unreachable') }}"

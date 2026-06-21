@@ -1,0 +1,43 @@
+{
+  "type": "playbook",
+  "spec_version": "cacao-2.0",
+  "id": "playbook--REPLACE-WITH-UUID",
+  "name": "Block malicious source IP on Lab Firewall",
+  "description": "TEMPLATE (UML step 5). Fill the __SOURCE_IP__ placeholder (or the 'source_ip' playbook variable) with the malicious test IP from the exercise brief, then submit to NG-SOAR for validation.",
+  "created_by": "identity--REPLACE-WITH-TRAINEE-UUID",
+  "created": "2026-06-21T09:00:00.000Z",
+  "modified": "2026-06-21T09:00:00.000Z",
+  "workflow_start": "start--01",
+  "playbook_variables": {
+    "source_ip": {
+      "type": "ipv4-addr",
+      "description": "Malicious source IP to block (from the exercise brief)",
+      "value": "__SOURCE_IP__",
+      "constant": false,
+      "external": true
+    }
+  },
+  "workflow": {
+    "start--01": {
+      "type": "start",
+      "on_completion": "action--block-ip"
+    },
+    "action--block-ip": {
+      "type": "action",
+      "name": "Block source IP on the Lab Firewall (nftables)",
+      "description": "Drop all forwarded traffic whose source address is the malicious IP.",
+      "on_completion": "end--01",
+      "commands": [
+        {
+          "type": "ssh",
+          "command": "sudo nft add rule inet filter forward ip saddr __SOURCE_IP__ counter drop"
+        }
+      ],
+      "agent": "ng-soar--cacao-executor",
+      "targets": ["lab-firewall"]
+    },
+    "end--01": {
+      "type": "end"
+    }
+  }
+}

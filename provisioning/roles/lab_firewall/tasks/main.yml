@@ -1,0 +1,64 @@
+---
+# =============================================================================
+# role: lab_firewall
+# nftables gateway between attacker-net, target-net and soar-net.
+# Provides the management account NG-SOAR uses to apply block rules (UML 12)
+# and capture evidence (UML 14).
+# =============================================================================
+
+- name: Install nftables and sudo
+  ansible.builtin.apt:
+    name:
+      - nftables
+      - sudo
+    state: present
+    update_cache: true
+
+- name: Enable IPv4 forwarding (firewall sits in the attacker->target path)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Deploy base nftables ruleset (forward policy accept)
+  ansible.builtin.copy:
+    src: nftables.conf
+    dest: /etc/nftables.conf
+    mode: "0755"
+  notify: reload nftables
+
+- name: Ensure nftables is enabled and started
+  ansible.builtin.service:
+    name: nftables
+    state: started
+    enabled: true
+
+# --- Management account used by NG-SOAR's CACAO executor ---------------------
+- name: Create the firewall management user for NG-SOAR
+  ansible.builtin.user:
+    name: "{{ fw_mgmt_user }}"
+    shell: /bin/bash
+    password: "{{ fw_mgmt_user_password_hash }}"
+    create_home: true
+
+- name: Grant passwordless sudo limited to nft
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ fw_mgmt_user }}"
+    mode: "0440"
+    content: "{{ fw_mgmt_user }} ALL=(root) NOPASSWD: /usr/sbin/nft\n"
+    validate: "visudo -cf %s"
+
+- name: Authorize the NG-SOAR executor public key (from ng-soar host fact)
+  ansible.posix.authorized_key:
+    user: "{{ fw_mgmt_user }}"
+    state: present
+    key: "{{ hostvars[groups['ng_soar'][0]]['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"
+
+- name: Install static route so target-net traffic stays on this firewall
+  ansible.builtin.command:
+    cmd: "ip route replace {{ target_net_cidr }} dev eth2"
+  register: fw_route
+  changed_when: false
+  failed_when: false

@@ -1,0 +1,48 @@
+---
+# =============================================================================
+# role: evaluation_reporting
+# Cyber-range feedback: ingests the compiled report (UML 15) and serves the
+# training summary (UML 16).
+# =============================================================================
+
+- name: Install python runtime
+  ansible.builtin.apt:
+    name:
+      - python3
+    state: present
+    update_cache: true
+
+- name: Deploy the evaluation/reporting service
+  ansible.builtin.copy:
+    src: evaluation.py
+    dest: /opt/evaluation/evaluation.py
+    mode: "0755"
+
+- name: Ensure report store exists
+  ansible.builtin.file:
+    path: /var/log/cacao-training/reports
+    state: directory
+    mode: "0755"
+
+- name: Install the evaluation/reporting systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/evaluation-reporting.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=PUC2 2d Evaluation/Reporting service (UML steps 15-16)
+      After=network-online.target
+      Wants=network-online.target
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/python3 /opt/evaluation/evaluation.py
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable and start the evaluation/reporting service
+  ansible.builtin.systemd:
+    name: evaluation-reporting.service
+    enabled: true
+    daemon_reload: true
+    state: started

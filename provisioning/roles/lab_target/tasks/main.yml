@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# role: lab_target
+# The protected service (HTTP + SSH) under attack. Routes via the Lab Firewall
+# so a source-IP block is verifiable (UML step 13).
+# =============================================================================
+
+- name: Install web server and ssh
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - openssh-server
+    state: present
+    update_cache: true
+
+- name: Publish a recognizable landing page
+  ansible.builtin.copy:
+    dest: /var/www/html/index.html
+    mode: "0644"
+    content: |
+      <html><body>
+      <h1>Lab Target Service</h1>
+      <p>PUC2 Sub Case 2d - this service is the attack target.</p>
+      </body></html>
+
+- name: Ensure nginx and ssh are running
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - nginx
+    - ssh
+
+- name: Route attacker-net traffic back through the Lab Firewall
+  ansible.builtin.command:
+    cmd: "ip route replace {{ attacker_net_cidr }} via {{ fw_target_ip }}"
+  changed_when: false
+  failed_when: false
+
+# --- Allow NG-SOAR executor to collect evidence from the target -------------
+- name: Create NG-SOAR management user on the target
+  ansible.builtin.user:
+    name: "{{ fw_mgmt_user }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Authorize the NG-SOAR executor public key on the target
+  ansible.posix.authorized_key:
+    user: "{{ fw_mgmt_user }}"
+    state: present
+    key: "{{ hostvars[groups['ng_soar'][0]]['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"
+
+- name: Enable access logging for blocked-traffic evidence
+  ansible.builtin.lineinfile:
+    path: /var/log/cacao-training/target-info.txt
+    create: true
+    mode: "0644"
+    line: "Lab Target Service ready: http://{{ target_service_ip }}:{{ target_service_http_port }}"

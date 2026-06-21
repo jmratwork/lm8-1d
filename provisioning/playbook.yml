@@ -1,0 +1,69 @@
+---
+# =============================================================================
+# CyberRangeCZ Sandbox Provisioning - master playbook
+# PUC2 (CYNET) - Sub Case 2d: CACAO Playbook Authoring Training
+# -----------------------------------------------------------------------------
+# Reference:
+#   https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-provisioning/
+#
+# Groups (`ng_soar`, `lab_firewall`, `lab_target`, `attacker`, `student`,
+# `evaluation_reporting`) are defined in /topology.yml and are exposed by the
+# platform-generated inventory. `hosts` and `routers` are auto-created groups.
+# =============================================================================
+
+# Shared scenario facts available to every play (resolved from group_vars too).
+- name: Baseline hardening and common packages on all Linux hosts
+  hosts: hosts
+  become: true
+  gather_facts: true
+  roles:
+    - common
+
+# --- NG-SOAR : KMS + CACAO Validator/Executor (Docker host) ------------------
+- name: Deploy Docker engine and the NG-SOAR stack
+  hosts: ng_soar
+  become: true
+  gather_facts: true
+  roles:
+    - docker_server      # install Docker + deploy NG-SOAR via docker-compose
+    - ng_soar            # KMS + CACAO validator/executor config, templates, hints
+
+# --- Lab Firewall : nftables gateway between attacker and target -------------
+- name: Configure the Lab Firewall (nftables, forwarding, remote management)
+  hosts: lab_firewall
+  become: true
+  gather_facts: true
+  roles:
+    - lab_firewall
+
+# --- Lab Target Service : service under attack -------------------------------
+- name: Configure the Lab Target Service (web/ssh + logging)
+  hosts: lab_target
+  become: true
+  gather_facts: true
+  roles:
+    - lab_target
+
+# --- Attacker : suspicious-traffic generator (malicious test IP) -------------
+- name: Configure the Attacker host (traffic generator)
+  hosts: attacker
+  become: true
+  gather_facts: true
+  roles:
+    - attacker
+
+# --- Student workstation : authoring environment ----------------------------
+- name: Provision the Student workstation with CACAO authoring materials
+  hosts: student
+  become: true
+  gather_facts: true
+  roles:
+    - student_ws
+
+# --- Evaluation / Reporting : feedback collection ---------------------------
+- name: Configure the Evaluation/Reporting host
+  hosts: evaluation_reporting
+  become: true
+  gather_facts: true
+  roles:
+    - evaluation_reporting

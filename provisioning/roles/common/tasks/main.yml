@@ -1,0 +1,53 @@
+---
+# =============================================================================
+# role: common
+# Baseline packages, time sync and a scenario log directory used across hosts.
+# =============================================================================
+
+- name: Wait for apt locks and update cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  register: apt_update
+  retries: 5
+  delay: 10
+  until: apt_update is succeeded
+
+- name: Install common base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - vim
+      - jq
+      - python3
+      - python3-pip
+      - chrony
+      - net-tools
+      - tcpdump
+    state: present
+
+- name: Ensure chrony (time sync) is running
+  ansible.builtin.service:
+    name: chrony
+    state: started
+    enabled: true
+  failed_when: false
+
+- name: Create scenario evidence/log directory
+  ansible.builtin.file:
+    path: /var/log/cacao-training
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Drop a scenario marker
+  ansible.builtin.copy:
+    dest: /etc/cacao-training.env
+    mode: "0644"
+    content: |
+      SCENARIO="PUC2 Sub Case 2d - CACAO Playbook Authoring Training (Firewall IP Block)"
+      MALICIOUS_SOURCE_IP={{ malicious_source_ip }}
+      TARGET_SERVICE_IP={{ target_service_ip }}
+      NG_SOAR_IP={{ ng_soar_ip }}
