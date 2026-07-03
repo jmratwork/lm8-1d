@@ -3,7 +3,8 @@
 # role: lab_firewall
 # nftables gateway between attacker-net, target-net and soar-net.
 # Provides the management account NG-SOAR uses to apply block rules (UML 12)
-# and capture evidence (UML 14).
+# and capture evidence (UML 14). The firewall is directly connected to all
+# three lab networks, so it needs no extra static routes of its own.
 # =============================================================================
 
 - name: Install nftables and sudo
@@ -50,15 +51,8 @@
     content: "{{ fw_mgmt_user }} ALL=(root) NOPASSWD: /usr/sbin/nft\n"
     validate: "visudo -cf %s"
 
-- name: Authorize the NG-SOAR executor public key (from ng-soar host fact)
+- name: Authorize the NG-SOAR executor public key (from the ng-soar host fact)
   ansible.posix.authorized_key:
     user: "{{ fw_mgmt_user }}"
     state: present
-    key: "{{ hostvars[groups['ng_soar'][0]]['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"
-
-- name: Install static route so target-net traffic stays on this firewall
-  ansible.builtin.command:
-    cmd: "ip route replace {{ target_net_cidr }} dev eth2"
-  register: fw_route
-  changed_when: false
-  failed_when: false
+    key: "{{ hostvars['ng-soar']['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"

@@ -1,24 +1,22 @@
 ---
 # =============================================================================
-# APG variables (optional). Used by the platform to generate per-sandbox
-# variant answers. For this scenario we expose the malicious test IP and the
-# protected service so they can be randomized across a pool if desired.
+# APG Variables (optional) - variant answers for the training.
+# Schema:
+#   https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/apg-variables/
+#   supported types: username | password | port | text | IP
 #
-# NOTE: These are SCENARIO variables, NOT secrets. Real secrets (Docker Hub
-# PAT, NG-SOAR DB passwords, SMB credentials) must NOT live here in plaintext.
-# See README.md "Secrets management" and provisioning/group_vars/all/vault.yml.
+# For PUC2 Sub Case 2d the trainee's "answer" is the malicious source IP they
+# must block (and the service port they protect). Declaring them as APG
+# variables enables variant answers across a sandbox pool.
 # =============================================================================
 
-# The attacker / malicious source IP that the CACAO playbook must block.
+# The malicious source IP the student must identify and block in the firewall.
 malicious_source_ip:
-  type: "value"
-  value: "10.10.10.10"
+  type: IP
 
-# The protected target service.
-target_service_ip:
-  type: "value"
-  value: "10.10.20.10"
-
+# The port of the protected Lab Target Service.
 target_service_port:
-  type: "value"
-  value: "80"
+  type: port
+  min: 1024
+  max: 65000
+  prohibited: [22]

@@ -1,0 +1,40 @@
+---
+# =============================================================================
+# role: all
+# Cross-cutting configuration applied to every system, mirroring the reference
+# `integrations` `all` role: the Kali rsyslog/libfastjson fix and the
+# CyberRangeCZ command-logging pass.
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations
+# =============================================================================
+
+# --- Kali rsyslog fix -------------------------------------------------------
+# libfastjson4 on Kali is compiled without -lm; the IFUNC resolver for modf()
+# needs libm in DT_NEEDED or rsyslogd segfaults before reading its config.
+- name: Install patchelf on Kali
+  ansible.builtin.apt:
+    name: patchelf
+    state: present
+    update_cache: false
+  when: ansible_distribution == "Kali"
+
+- name: Patch libfastjson4 to add libm.so.6 dependency (fixes rsyslog IFUNC segfault)
+  ansible.builtin.shell: |
+    if ! patchelf --print-needed /usr/lib/x86_64-linux-gnu/libfastjson.so.4 | grep -q libm.so.6; then
+      patchelf --add-needed libm.so.6 /usr/lib/x86_64-linux-gnu/libfastjson.so.4
+      echo "patched"
+    else
+      echo "already patched"
+    fi
+  register: fastjson_patch
+  changed_when: "'patched' in fastjson_patch.stdout"
+  when: ansible_distribution == "Kali"
+
+# --- CyberRangeCZ command logging -------------------------------------------
+- name: Set up command logging
+  ansible.builtin.include_role:
+    name: sandbox-logging
+  vars:
+    slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
+  when:
+    - ansible_system == "Linux"
+    - inventory_hostname not in ['proxy-jump', 'man']

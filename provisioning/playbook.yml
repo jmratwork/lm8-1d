@@ -3,48 +3,48 @@
 # CyberRangeCZ Sandbox Provisioning - master playbook
 # PUC2 (CYNET) - Sub Case 2d: CACAO Playbook Authoring Training
 # -----------------------------------------------------------------------------
-# Reference:
+# Reference (structure, hostname targeting, sandbox-logging pass):
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations
 #   https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-provisioning/
 #
-# Groups (`ng_soar`, `lab_firewall`, `lab_target`, `attacker`, `student`,
-# `evaluation_reporting`) are defined in /topology.yml and are exposed by the
-# platform-generated inventory. `hosts` and `routers` are auto-created groups.
+# Plays target hosts by NAME (topology `groups: []`), and the final pass uses
+# the platform auto-groups `hosts` and `routers` for command logging.
 # =============================================================================
 
-# Shared scenario facts available to every play (resolved from group_vars too).
-- name: Baseline hardening and common packages on all Linux hosts
+# --- Baseline on every Linux host ------------------------------------------
+- name: Baseline packages and scenario markers on all hosts
   hosts: hosts
   become: true
   gather_facts: true
   roles:
     - common
 
-# --- NG-SOAR : KMS + CACAO Validator/Executor (Docker host) ------------------
+# --- NG-SOAR : KMS + CACAO Validator/Executor (Docker host) ----------------
 - name: Deploy Docker engine and the NG-SOAR stack
-  hosts: ng_soar
+  hosts: ng-soar
   become: true
   gather_facts: true
   roles:
-    - docker_server      # install Docker + deploy NG-SOAR via docker-compose
-    - ng_soar            # KMS + CACAO validator/executor config, templates, hints
+    - docker_server      # Docker + NG-SOAR via docker-compose (integrations pattern)
+    - ng_soar            # KMS content + CACAO validator/executor + toolkit/hints
 
-# --- Lab Firewall : nftables gateway between attacker and target -------------
+# --- Lab Firewall : nftables gateway between attacker and target -----------
 - name: Configure the Lab Firewall (nftables, forwarding, remote management)
-  hosts: lab_firewall
+  hosts: lab-firewall
   become: true
   gather_facts: true
   roles:
     - lab_firewall
 
-# --- Lab Target Service : service under attack -------------------------------
+# --- Lab Target Service ----------------------------------------------------
 - name: Configure the Lab Target Service (web/ssh + logging)
-  hosts: lab_target
+  hosts: lab-target
   become: true
   gather_facts: true
   roles:
     - lab_target
 
-# --- Attacker : suspicious-traffic generator (malicious test IP) -------------
+# --- Attacker : suspicious-traffic generator (malicious test IP) -----------
 - name: Configure the Attacker host (traffic generator)
   hosts: attacker
   become: true
@@ -52,18 +52,34 @@
   roles:
     - attacker
 
-# --- Student workstation : authoring environment ----------------------------
+# --- Student workstation ----------------------------------------------------
 - name: Provision the Student workstation with CACAO authoring materials
-  hosts: student
+  hosts: student-ws
   become: true
   gather_facts: true
   roles:
     - student_ws
 
-# --- Evaluation / Reporting : feedback collection ---------------------------
+# --- Evaluation / Reporting -------------------------------------------------
 - name: Configure the Evaluation/Reporting host
-  hosts: evaluation_reporting
+  hosts: evaluation-reporting
   become: true
   gather_facts: true
   roles:
     - evaluation_reporting
+
+# --- Cross-cutting config on all systems (Kali rsyslog fix + logging) ------
+- name: Configure all systems (command logging, host fixes)
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - all
+
+# --- Management node: syslog-ng forwarding (mirrors reference `man`) --------
+- name: Configure syslog-ng forwarding on the management node
+  hosts: man
+  become: true
+  gather_facts: true
+  roles:
+    - man

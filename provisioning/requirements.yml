@@ -1,5 +1,14 @@
 ---
-# Ansible collections required by the provisioning roles.
+# Ansible roles required from Galaxy/Git.
+# Mirrors the reference sandbox: the CyberRangeCZ command-logging role.
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations (requirements.yml)
+roles:
+  - name: sandbox-logging
+    src: https://github.com/cyberrangecz/ansible-role-sandbox-logging.git
+    scm: git
+    version: v1.0.0
+
+# Collections used by the provisioning roles.
 collections:
   - name: community.docker
     version: ">=3.4.0"

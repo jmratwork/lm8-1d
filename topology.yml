@@ -5,35 +5,41 @@
 # -----------------------------------------------------------------------------
 # Schema reference:
 #   https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/topology-definition/
+# Image / flavor / mgmt_user catalogue aligned with the real NG-SOC sandbox:
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations  (topology.yml)
+#     images : kali, ubuntu-noble-x86_64, debian-12-x86_64
+#     flavors: standard.xmedium, standard.xsmedium, standard.small
+#     note   : the Kali box is accessed with mgmt_user "debian".
 #
-# Design notes (see README.md for the full UML -> resource mapping):
-#   - "lab-firewall" is the single L3 gateway/firewall connecting the three
-#     lab networks. It is therefore ON THE PATH attacker -> lab-target, so a
-#     source-IP block rule is verifiable (UML steps 12-13).
-#   - Each lab network also has a router to the WAN for Internet egress, which
-#     is needed during provisioning (Docker Hub pulls, apt packages). Lab
-#     traffic between attacker and target is forced through the firewall via
-#     static routes installed by the provisioning roles.
+# Design (see README.md for the full UML -> resource mapping):
+#   - Faithful to the UML: attacker and lab-target live on separate networks and
+#     "lab-firewall" is the L3 gateway/firewall BETWEEN them, so a source-IP
+#     block is verifiable (UML steps 12-13).
+#   - Per-network routers own ".1" (the subnet gateway, as in the reference and
+#     as OpenStack expects). The firewall takes ".254" on each network to avoid
+#     colliding with the reserved gateway/DHCP addresses.
+#   - Provisioning installs static routes on attacker/lab-target so inter-lab
+#     traffic is forced through the firewall (data path), while Internet egress
+#     for provisioning stays via each network's router.
 # =============================================================================
 
 name: puc2-subcase2d-cacao-firewall-ip-block
 
 # -----------------------------------------------------------------------------
-# Hosts (end-host virtual machines)
+# Hosts
 # -----------------------------------------------------------------------------
 hosts:
-  # NG-SOAR: KMS + CACAO Validator/Executor (Docker host). Runs the NG-SOAR
-  # stack that validates CACAO syntax/workflow and executes the playbook
-  # against the Lab Firewall. Needs more RAM for the container stack.
+  # NG-SOAR: KMS + CACAO Validator/Executor (Docker host). Mirrors the reference
+  # "docker-server" box that deploys the NG-SOAR docker-compose stack.
   - name: ng-soar
     base_box:
-      image: debian-12-x86_64
-      mgmt_user: debian
+      image: ubuntu-noble-x86_64
+      mgmt_user: ubuntu
       mgmt_protocol: ssh
-    flavor: standard.large
+    flavor: standard.xsmedium
 
-  # Lab Firewall: dual/tri-homed Linux host running nftables. It is the
-  # gateway between attacker-net, target-net and soar-net.
+  # Lab Firewall: dual/tri-homed Linux host running nftables. L3 gateway between
+  # attacker-net, target-net and soar-net.
   - name: lab-firewall
     base_box:
       image: debian-12-x86_64
@@ -41,44 +47,42 @@ hosts:
       mgmt_protocol: ssh
     flavor: standard.small
 
-  # Lab Target Service: the service under attack (HTTP + SSH) used to verify
-  # that traffic from the malicious source IP is blocked.
+  # Lab Target Service: the protected HTTP/SSH service (mirrors reference "victim").
   - name: lab-target
     base_box:
-      image: debian-12-x86_64
-      mgmt_user: debian
+      image: ubuntu-noble-x86_64
+      mgmt_user: ubuntu
       mgmt_protocol: ssh
     flavor: standard.small
 
   # Attacker: generates the "suspicious traffic from a test IP" (UML step 2).
-  # Its IP is the malicious source IP that the CACAO playbook will block.
+  # Mirrors the reference "kali" box (accessed as mgmt_user "debian").
   - name: attacker
     base_box:
-      image: kali-2020.4
-      mgmt_user: kali
+      image: kali
+      mgmt_user: debian
       mgmt_protocol: ssh
-    flavor: standard.small
+    flavor: standard.xmedium
 
-  # Student workstation: where the trainee authors and submits the CACAO
-  # playbook to NG-SOAR.
+  # Student workstation: where the trainee authors and submits the CACAO playbook.
   - name: student-ws
     base_box:
-      image: debian-12-x86_64
-      mgmt_user: debian
+      image: ubuntu-noble-x86_64
+      mgmt_user: ubuntu
       mgmt_protocol: ssh
     flavor: standard.small
 
-  # Evaluation / Reporting: collects the student playbook, validation results
-  # and execution logs to build the training summary (UML steps 15-16).
+  # Evaluation / Reporting: collects playbook, validation results and logs
+  # to build the training summary (UML steps 15-16).
   - name: evaluation-reporting
     base_box:
-      image: debian-12-x86_64
-      mgmt_user: debian
+      image: ubuntu-noble-x86_64
+      mgmt_user: ubuntu
       mgmt_protocol: ssh
     flavor: standard.small
 
 # -----------------------------------------------------------------------------
-# Routers (provide WAN/Internet egress per network for provisioning)
+# Routers (WAN/Internet egress per network; each owns the ".1" gateway)
 # -----------------------------------------------------------------------------
 routers:
   - name: soar-router
@@ -100,7 +104,7 @@ routers:
     flavor: standard.small
 
 # -----------------------------------------------------------------------------
-# WAN (Internet-facing network for routers)
+# WAN
 # -----------------------------------------------------------------------------
 wan:
   name: internet-connection
@@ -110,28 +114,22 @@ wan:
 # Networks (disjoint CIDRs)
 # -----------------------------------------------------------------------------
 networks:
-  # Management/operations network: NG-SOAR, student workstation, evaluation.
   - name: soar-net
     cidr: 10.10.30.0/24
-    accessible_by_user: True
-
-  # Network where the attacker (malicious test IP) lives.
+    accessible_by_user: true
   - name: attacker-net
     cidr: 10.10.10.0/24
-    accessible_by_user: True
-
-  # Network where the protected Lab Target Service lives.
+    accessible_by_user: true
   - name: target-net
     cidr: 10.10.20.0/24
-    accessible_by_user: True
+    accessible_by_user: true
 
 # -----------------------------------------------------------------------------
-# Net mappings (host -> network, with IPs)
-# The lab-firewall is intentionally connected to ALL THREE lab networks so it
-# is the L3 gateway/firewall on every inter-network path.
+# Net mappings (host -> network). The firewall is on ALL THREE lab networks
+# at ".254" so it is the inter-network enforcement point.
 # -----------------------------------------------------------------------------
 net_mappings:
-  # NG-SOAR + ops hosts on soar-net
+  # Ops hosts on soar-net
   - host: ng-soar
     network: soar-net
     ip: 10.10.30.10
@@ -142,76 +140,44 @@ net_mappings:
     network: soar-net
     ip: 10.10.30.30
 
-  # Lab firewall: gateway interface on each lab network (.1 of each net)
+  # Lab firewall: gateway/enforcement interface on each network (.254)
   - host: lab-firewall
     network: soar-net
-    ip: 10.10.30.1
+    ip: 10.10.30.254
   - host: lab-firewall
     network: attacker-net
-    ip: 10.10.10.1
+    ip: 10.10.10.254
   - host: lab-firewall
     network: target-net
-    ip: 10.10.20.1
+    ip: 10.10.20.254
 
-  # Attacker on attacker-net (this is the malicious test source IP)
+  # Attacker (malicious test source IP)
   - host: attacker
     network: attacker-net
     ip: 10.10.10.10
 
-  # Target service on target-net
+  # Protected target service
   - host: lab-target
     network: target-net
     ip: 10.10.20.10
 
 # -----------------------------------------------------------------------------
-# Router mappings (router -> network, with IPs)
-# Each network has a router on .254 connecting it to the WAN for Internet egress.
+# Router mappings (router -> network). Each router owns ".1" (subnet gateway).
 # -----------------------------------------------------------------------------
 router_mappings:
   - router: soar-router
     network: soar-net
-    ip: 10.10.30.254
+    ip: 10.10.30.1
   - router: attacker-router
     network: attacker-net
-    ip: 10.10.10.254
+    ip: 10.10.10.1
   - router: target-router
     network: target-net
-    ip: 10.10.20.254
+    ip: 10.10.20.1
 
 # -----------------------------------------------------------------------------
-# Ansible groups (by role) - consumed by provisioning/playbook.yml
+# Groups: kept empty on purpose. Plays target hosts by name (as in the reference
+# integrations topology) and use the platform auto-groups `hosts` and `routers`
+# for the sandbox-logging pass. Avoids any group/host name collision.
 # -----------------------------------------------------------------------------
-groups:
-  - name: ng_soar
-    nodes:
-      - ng-soar
-  - name: lab_firewall
-    nodes:
-      - lab-firewall
-  - name: lab_target
-    nodes:
-      - lab-target
-  - name: attacker
-    nodes:
-      - attacker
-  - name: student
-    nodes:
-      - student-ws
-  - name: evaluation_reporting
-    nodes:
-      - evaluation-reporting
-
-# -----------------------------------------------------------------------------
-# Monitoring targets (services to monitor)
-# -----------------------------------------------------------------------------
-monitoring_targets:
-  - node: ng-soar
-    targets:
-      - port: 443
-        interface: eth0
-  - node: lab-target
-    targets:
-      - port: 80
-        interface: eth0
-      - port: 22
-        interface: eth0
+groups: []

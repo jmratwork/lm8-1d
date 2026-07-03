@@ -3,6 +3,7 @@
 # role: student_ws
 # Trainee workstation: exercise brief (UML 3), local copy of the CACAO toolkit
 # (UML 5) and the cacao-client used to submit/correct/execute (UML 4,6,9,11,16).
+# Host image is ubuntu-noble-x86_64 (mgmt_user: ubuntu).
 # =============================================================================
 
 - name: Install client tooling
@@ -15,26 +16,26 @@
 
 - name: Create the trainee CACAO workspace
   ansible.builtin.file:
-    path: /home/debian/cacao
+    path: /home/ubuntu/cacao
     state: directory
-    owner: debian
-    group: debian
+    owner: ubuntu
+    group: ubuntu
     mode: "0755"
 
 - name: Deliver the exercise brief (UML step 3)
   ansible.builtin.copy:
     src: EXERCISE_BRIEF.md
-    dest: /home/debian/cacao/EXERCISE_BRIEF.md
-    owner: debian
-    group: debian
+    dest: /home/ubuntu/cacao/EXERCISE_BRIEF.md
+    owner: ubuntu
+    group: ubuntu
     mode: "0644"
 
 - name: Deliver the CACAO toolkit locally (templates, hints, supported commands)
   ansible.builtin.copy:
-    src: "../../ng_soar/files/cacao-toolkit/"
-    dest: /home/debian/cacao/
-    owner: debian
-    group: debian
+    src: "{{ role_path }}/../ng_soar/files/cacao-toolkit/"
+    dest: /home/ubuntu/cacao/
+    owner: ubuntu
+    group: ubuntu
     mode: "0644"
 
 - name: Install the cacao-client helper

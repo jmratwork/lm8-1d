@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# role: man
+# syslog-ng forwarding on the management node, mirroring the reference
+# `integrations` `man` role. Receives RFC5424 events on tcp/514 and forwards
+# them to the central collector (values from group_vars/all/vault.yml).
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations
+# =============================================================================
+
+- name: Deploy syslog-ng forwarding configuration
+  ansible.builtin.copy:
+    dest: /etc/syslog-ng/conf.d/forward-rfc5424-messages.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      options {
+              keep-hostname(yes);
+      };
+
+      # EVENTS log source
+      source s_host {
+          network(
+             ip(0.0.0.0)
+             port(514)
+             transport(tcp)
+             flags(syslog-protocol)
+             max-connections(300)
+          );
+      };
+
+      rewrite r_rewrite_set {
+          set("$FULLHOST_FROM", value(".SDATA.crczp.fromhost_ip"));
+      };
+
+      # EVENTS log destination
+      destination d_destination_host {
+          network(
+              "{{ syslog_forward_destination }}"
+              port({{ syslog_forward_port }})
+              transport(tcp)
+              ip-protocol(4)
+              flags(syslog-protocol)
+          );
+      };
+
+      # EVENTS log pairing
+      log {
+          source(s_host);
+          rewrite(r_rewrite_set);
+          destination(d_destination_host);
+      };
+
+- name: Restart syslog-ng
+  ansible.builtin.service:
+    name: syslog-ng
+    state: restarted

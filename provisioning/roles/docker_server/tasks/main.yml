@@ -3,16 +3,27 @@
 # role: docker_server
 # Installs Docker Engine + Compose plugin and deploys the NG-SOAR stack.
 #
-# Pattern adapted from the NG-SOC reference role:
-#   https://github.com/NG-SOC-eu/ng-soc-ansible/blob/central/provisioning/roles/docker_server/tasks/main.yml
-#
-# Differences vs. the reference:
-#   - NO hardcoded secrets. Docker Hub PAT / SMB creds come from vault.yml.
-#   - SMB mount is best-effort; if the artefact share is unavailable the role
-#     falls back to the docker-compose.yml bundled in this role's files/.
+# Faithful to the NG-SOC reference `integrations` docker_server role:
+#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations
+#   (Ubuntu Docker repo, SMB artefact mount, docker_login, /opt/NG-SOAR
+#    docker-compose.yml, docker_compose_v2 build: always)
+# Differences: secrets come from group_vars/all/vault.yml (not inline), and if
+# the SMB share is unreachable a bundled fallback compose file is used so the
+# training scenario still runs.
 # =============================================================================
 
-- name: Install Docker + SMB prerequisites
+- name: Set password on the ubuntu management user
+  ansible.builtin.user:
+    name: ubuntu
+    password: "{{ ubuntu_password_hash }}"
+    update_password: always
+
+- name: Save docker-server internal (topology) IP fact
+  ansible.builtin.set_fact:
+    docker_server_internal_ip: "{{ ansible_all_ipv4_addresses | select('match', '^10\\.') | first }}"
+    cacheable: true
+
+- name: Install Docker prerequisites
   ansible.builtin.apt:
     name:
       - ca-certificates
@@ -23,27 +34,27 @@
     state: present
     update_cache: true
 
-- name: Create apt keyrings directory
+- name: Create /etc/apt/keyrings directory
   ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
     mode: "0755"
 
-- name: Download Docker GPG key
+- name: Download Docker GPG key (Ubuntu)
   ansible.builtin.get_url:
-    url: https://download.docker.com/linux/debian/gpg
+    url: https://download.docker.com/linux/ubuntu/gpg
     dest: /etc/apt/keyrings/docker.asc
     mode: "0644"
 
-- name: Add Docker apt repository
-  ansible.builtin.apt_repository:
-    repo: >-
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
-      https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
-    filename: docker
-    state: present
+- name: Add Docker APT repository (Ubuntu)
+  ansible.builtin.shell: |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  args:
+    creates: /etc/apt/sources.list.d/docker.list
+  register: repo_add
+  changed_when: repo_add.rc == 0
 
-- name: Install Docker Engine and Compose plugin
+- name: Install Docker packages
   ansible.builtin.apt:
     name:
       - docker-ce
@@ -54,51 +65,51 @@
     state: present
     update_cache: true
 
-- name: Ensure Docker is started and enabled
+- name: Ensure Docker service is started and enabled
   ansible.builtin.service:
     name: docker
     state: started
     enabled: true
 
-- name: Install Docker SDK for Python (for community.docker modules)
+- name: Install Docker SDK for Python (community.docker modules)
   ansible.builtin.pip:
     name:
       - docker
       - requests
     break_system_packages: true
 
-- name: Log in to Docker Hub (only if a real PAT is provided)
+- name: Log in to Docker Hub
   community.docker.docker_login:
     username: "{{ dockerhub_username }}"
     password: "{{ dockerhub_pat }}"
-  when: dockerhub_pat is defined and dockerhub_pat != "CHANGEME"
   no_log: true
+  when: dockerhub_pat is defined and dockerhub_pat | length > 0
 
 # --- Artefact share (best-effort) -------------------------------------------
 - name: Create SMB mount point
   ansible.builtin.file:
     path: /mnt/smb_shared
     state: directory
-    mode: "0755"
+    mode: "0775"
 
-- name: Mount the artefact SMB share (best-effort)
+- name: Mount the artefact SMB share (guest)
   ansible.posix.mount:
+    src: "{{ smb_share_src }}"
     path: /mnt/smb_shared
-    src: "{{ smb_share_path }}"
     fstype: cifs
-    opts: "guest,vers=3.0,ro"
+    opts: "{{ smb_share_opts }}"
     state: mounted
   register: smb_mount
   failed_when: false
 
 # --- NG-SOAR deployment ------------------------------------------------------
-- name: Create NG-SOAR deployment directory
+- name: Create NG-SOAR directory for the compose file
   ansible.builtin.file:
     path: /opt/NG-SOAR
     state: directory
     mode: "0755"
 
-- name: Copy NG-SOAR compose file from SMB share (if mounted)
+- name: Copy NG-SOAR compose file from the SMB share
   ansible.builtin.copy:
     src: /mnt/smb_shared/NG-SOAR.yml
     dest: /opt/NG-SOAR/docker-compose.yml
@@ -107,20 +118,32 @@
   register: compose_from_smb
   failed_when: false
 
-- name: Fall back to bundled NG-SOAR compose file
+- name: Fall back to the bundled NG-SOAR compose file (SMB unavailable)
   ansible.builtin.copy:
     src: docker-compose.yml
     dest: /opt/NG-SOAR/docker-compose.yml
     mode: "0644"
-  when: compose_from_smb is failed or compose_from_smb is skipped or not (smb_mount.changed | default(false))
+  when: compose_from_smb is not defined or compose_from_smb is failed
 
-- name: Deploy the NG-SOAR stack
+- name: Ensure the KMS web root exists (bundled fallback serves toolkit here)
+  ansible.builtin.file:
+    path: /opt/NG-SOAR/kms/www
+    state: directory
+    mode: "0755"
+
+- name: Build and run NG-SOAR
   community.docker.docker_compose_v2:
     project_src: /opt/NG-SOAR
-    build: always
     state: present
-  register: ngsoar_compose
+    build: always
+  register: ng_soar_output
 
-- name: Show NG-SOAR compose result
+- name: Unmount the SMB share
+  ansible.posix.mount:
+    path: /mnt/smb_shared
+    state: unmounted
+  failed_when: false
+
+- name: Show NG-SOAR deployment result
   ansible.builtin.debug:
-    var: ngsoar_compose
+    var: ng_soar_output

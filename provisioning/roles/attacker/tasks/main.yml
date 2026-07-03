@@ -63,4 +63,4 @@
   ansible.posix.authorized_key:
     user: "{{ fw_mgmt_user }}"
     state: present
-    key: "{{ hostvars[groups['ng_soar'][0]]['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"
+    key: "{{ hostvars['ng-soar']['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"
