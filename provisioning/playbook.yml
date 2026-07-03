@@ -97,12 +97,13 @@
   roles:
     - man
 
-# --- Network diagnostics (non-fatal) - reveals real firewall IPs & path breaks
+# --- Network diagnostics (non-fatal) - decides Variant A vs B (enforcement path)
 - name: Network diagnostics on firewall and lab/ops hosts
   hosts:
     - lab-firewall
     - ng-soar
     - attacker
+    - lab-target
   become: true
   gather_facts: true
   roles:

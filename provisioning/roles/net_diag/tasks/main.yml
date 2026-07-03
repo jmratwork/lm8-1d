@@ -1,17 +1,31 @@
 ---
 # =============================================================================
 # role: net_diag
-# Non-fatal network diagnostics printed into the deploy log, to reveal the REAL
-# firewall interface IPs and where the soar-net<->lab-nets path breaks. All
-# tasks are failed_when:false / changed_when:false. Guarded by run_net_diag.
+# Non-fatal network diagnostics printed into the deploy log. Decides whether the
+# scenario can enforce/verify the block WITHOUT relying on the lab-firewall host
+# forwarding transit traffic between sandbox networks (which the platform
+# blocks). All tasks are failed_when:false / changed_when:false. Guarded by
+# run_net_diag.
+#
+# Decisive questions answered in the log:
+#   1. Does the firewall reach attacker/target DIRECTLY (it is L2-attached)?
+#   2. Does attacker -> target work AT ALL, and via which next-hop (router .1
+#      vs firewall .254)?  -> decides Variant A (host-based enforcement) vs
+#      Variant B (topology change needed).
+#   3. Is the malicious SOURCE IP preserved end-to-end (no NAT) at the target?
+#   4. Is the executor -> firewall -> target SSH JUMP path viable (Variant A
+#      management path)?
 # =============================================================================
 
 - name: net_diag block
   when: run_net_diag | default(true) | bool
+  vars:
+    nd_key: "/opt/ng-soar-cacao/keys/id_ed25519"
+    nd_ssh: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8"
   block:
-    - name: Install traceroute (best-effort)
+    - name: Install diag tools (best-effort)
       ansible.builtin.apt:
-        name: traceroute
+        name: [traceroute, tcpdump]
         state: present
       failed_when: false
       changed_when: false
@@ -28,33 +42,58 @@
       changed_when: false
       failed_when: false
 
-    - name: Firewall ruleset (lab-firewall only)
-      ansible.builtin.command: nft list ruleset
-      register: nd_nft
-      become: true
+    - name: Next-hop to target and attacker (ip route get)
+      ansible.builtin.shell: "ip route get {{ target_service_ip }}; echo '---'; ip route get {{ malicious_source_ip }}"
+      register: nd_rget
+      changed_when: false
+      failed_when: false
+
+    # --- Q1: firewall is L2-attached to attacker-net and target-net ----------
+    - name: "[firewall] direct reachability to attacker/target"
+      ansible.builtin.shell: >
+        echo "ping attacker:"; ping -c2 -W2 {{ malicious_source_ip }};
+        echo "ping target:"; ping -c2 -W2 {{ target_service_ip }};
+        echo "curl target:"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 http://{{ target_service_ip }}/
+      register: nd_fw_direct
       when: inventory_hostname == 'lab-firewall'
       changed_when: false
       failed_when: false
 
-    - name: Ping peer across the firewall
-      ansible.builtin.command: "ping -c1 -W2 {{ nd_peer }}"
-      register: nd_ping
-      when: nd_peer | default('') | length > 0
-      vars:
-        nd_peer: >-
-          {{ malicious_source_ip if inventory_hostname == 'ng-soar'
-             else (ng_soar_ip if inventory_hostname == 'attacker' else '') }}
+    # --- Q2: does attacker -> target work, and by which path? ----------------
+    - name: "[attacker] attacker -> target reachability"
+      ansible.builtin.shell: >
+        echo "curl target:"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/;
+        echo "route get target:"; ip route get {{ target_service_ip }}
+      register: nd_atk_target
+      when: inventory_hostname == 'attacker'
       changed_when: false
       failed_when: false
 
-    - name: Traceroute peer across the firewall
-      ansible.builtin.command: "traceroute -n -w2 -q1 {{ nd_peer }}"
-      register: nd_trace
-      when: nd_peer | default('') | length > 0
-      vars:
-        nd_peer: >-
-          {{ malicious_source_ip if inventory_hostname == 'ng-soar'
-             else (ng_soar_ip if inventory_hostname == 'attacker' else '') }}
+    # --- Q3: is the malicious SOURCE IP preserved at the target (no NAT)? -----
+    - name: "[target] capture source IP of incoming attacker traffic (nginx log + tcpdump)"
+      ansible.builtin.shell: >
+        echo "nginx access log hits from {{ malicious_source_ip }}:";
+        grep -c '{{ malicious_source_ip }}' /var/log/nginx/access.log 2>/dev/null || echo 0;
+        echo "tcpdump (4s) src {{ malicious_source_ip }}:";
+        timeout 4 tcpdump -ni any "src host {{ malicious_source_ip }}" -c 3 2>/dev/null || echo "(no packets / tcpdump n/a)"
+      register: nd_tgt_src
+      when: inventory_hostname == 'lab-target'
+      changed_when: false
+      failed_when: false
+
+    # --- Q4: executor -> firewall -> target SSH JUMP path (Variant A mgmt) ----
+    - name: "[ng-soar] SSH jump executor -> firewall -> target (and -> attacker)"
+      ansible.builtin.shell: >
+        echo "jump to target:";
+        ssh -i {{ nd_key }} {{ nd_ssh }}
+          -o ProxyCommand="ssh -i {{ nd_key }} {{ nd_ssh }} -W %h:%p {{ fw_mgmt_user }}@{{ fw_soar_ip }}"
+          {{ fw_mgmt_user }}@{{ target_service_ip }} 'echo JUMP_TARGET_OK; hostname';
+        echo "jump to attacker:";
+        ssh -i {{ nd_key }} {{ nd_ssh }}
+          -o ProxyCommand="ssh -i {{ nd_key }} {{ nd_ssh }} -W %h:%p {{ fw_mgmt_user }}@{{ fw_soar_ip }}"
+          {{ fw_mgmt_user }}@{{ malicious_source_ip }} 'echo JUMP_ATTACKER_OK; hostname'
+      register: nd_jump
+      when: inventory_hostname == 'ng-soar'
       changed_when: false
       failed_when: false
 
@@ -64,6 +103,8 @@
           - "host={{ inventory_hostname }}"
           - "addr: {{ nd_addr.stdout_lines | default([]) }}"
           - "route: {{ nd_route.stdout_lines | default([]) }}"
-          - "nft: {{ nd_nft.stdout_lines | default('(n/a)') }}"
-          - "ping: rc={{ nd_ping.rc | default('n/a') }} {{ nd_ping.stdout_lines | default([]) }}"
-          - "traceroute: {{ nd_trace.stdout_lines | default('(n/a)') }}"
+          - "route-get: {{ nd_rget.stdout_lines | default([]) }}"
+          - "fw-direct: {{ nd_fw_direct.stdout_lines | default('(n/a)') }}"
+          - "attacker->target: {{ nd_atk_target.stdout_lines | default('(n/a)') }}"
+          - "target-src-ip: {{ nd_tgt_src.stdout_lines | default('(n/a)') }}"
+          - "jump: {{ nd_jump.stdout_lines | default('(n/a)') }}"
