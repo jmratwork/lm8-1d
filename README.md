@@ -15,7 +15,6 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
 ```
 .
 ├── topology.yml                      # Topology Definition (MUST be at root)
-├── variables.yml                     # APG variables (variant answers)
 ├── README.md
 ├── VALIDATION.md                     # Validation report
 └── provisioning/
