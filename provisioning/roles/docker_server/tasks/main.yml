@@ -76,7 +76,7 @@
     name:
       - docker
       - requests
-    break_system_packages: true
+    extra_args: "--break-system-packages"
 
 - name: Log in to Docker Hub
   community.docker.docker_login:
