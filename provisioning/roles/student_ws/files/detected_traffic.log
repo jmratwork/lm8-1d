@@ -1,0 +1,17 @@
+# NG-SOC detection evidence - suspicious traffic from malicious source IP
+# Source: Lab Target Service (10.10.20.10) access logs, correlated by NG-SOC.
+# All entries below originate from the malicious test IP 10.10.10.10.
+#
+# fields: <timestamp> <src_ip> "<method> <path> <proto>" <status>
+2026-06-21T08:59:41Z 10.10.10.10 "GET /admin HTTP/1.1" 404
+2026-06-21T08:59:42Z 10.10.10.10 "GET /.env HTTP/1.1" 404
+2026-06-21T08:59:44Z 10.10.10.10 "TCP-SYN port=22" -
+2026-06-21T08:59:45Z 10.10.10.10 "GET /admin HTTP/1.1" 404
+2026-06-21T08:59:46Z 10.10.10.10 "GET /.env HTTP/1.1" 404
+2026-06-21T08:59:48Z 10.10.10.10 "TCP-SYN port=22" -
+2026-06-21T08:59:49Z 10.10.10.10 "GET /admin HTTP/1.1" 404
+2026-06-21T08:59:50Z 10.10.10.10 "GET /.env HTTP/1.1" 404
+2026-06-21T08:59:52Z 10.10.10.10 "TCP-SYN port=22" -
+# Summary: repeated probing for sensitive files (/admin, /.env) and an SSH (22)
+# port scan from 10.10.10.10. Recommended action: block the source IP at the
+# Lab Firewall via a CACAO playbook.

@@ -30,6 +30,14 @@
     group: ubuntu
     mode: "0644"
 
+- name: Deliver the NG-SOC detection evidence (suspicious traffic log)
+  ansible.builtin.copy:
+    src: detected_traffic.log
+    dest: /home/ubuntu/cacao/detected_traffic.log
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+
 - name: Deliver the CACAO toolkit locally (templates, hints, supported commands)
   ansible.builtin.copy:
     src: "{{ role_path }}/../ng_soar/files/cacao-toolkit/"

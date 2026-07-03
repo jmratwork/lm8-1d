@@ -11,6 +11,11 @@ Protected service   : http://10.10.20.10:80   (lab-target)
 Enforcement point   : Lab Firewall (nftables)  managed by NG-SOAR
 ```
 
+NG-SOC has attached the observed detection evidence at
+`~/cacao/detected_traffic.log` — the suspicious requests seen from the malicious
+IP (sensitive-file probing such as `GET /admin` and `GET /.env`, plus an SSH
+port-22 scan). Review it to understand what the attacker is after.
+
 ## Your task
 Author a **CACAO 2.0 playbook** that blocks the malicious source IP on the Lab
 Firewall, then have **NG-SOAR validate and execute** it.
