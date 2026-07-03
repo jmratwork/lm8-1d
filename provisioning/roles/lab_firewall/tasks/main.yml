@@ -7,6 +7,17 @@
 # three lab networks, so it needs no extra static routes of its own.
 # =============================================================================
 
+- name: Derive the firewall's real IP on each lab network (do not assume .254)
+  ansible.builtin.set_fact:
+    fw_ip_soar: "{{ ansible_all_ipv4_addresses | select('match', '10.10.30.') | list | first | default(fw_soar_ip) }}"
+    fw_ip_attacker: "{{ ansible_all_ipv4_addresses | select('match', '10.10.10.') | list | first | default(fw_attacker_ip) }}"
+    fw_ip_target: "{{ ansible_all_ipv4_addresses | select('match', '10.10.20.') | list | first | default(fw_target_ip) }}"
+    cacheable: true
+
+- name: Show the derived firewall per-network IPs
+  ansible.builtin.debug:
+    msg: "firewall IPs -> soar={{ fw_ip_soar }} attacker={{ fw_ip_attacker }} target={{ fw_ip_target }}"
+
 - name: Install nftables and sudo
   ansible.builtin.apt:
     name:

@@ -1,5 +1,6 @@
 ---
-# Return route to soar-net through the Lab Firewall (.254 on target-net).
+# Return route to soar-net through the Lab Firewall. Next-hop is the firewall's
+# REAL target-net IP (derived by the lab_firewall role), .254 as fallback.
 # The target<->attacker route is added by the `lab_target` role and is left intact.
 lab_static_routes:
-  - { dest: "{{ soar_net_cidr }}", via: "{{ fw_target_ip }}" }
+  - { dest: "{{ soar_net_cidr }}", via: "{{ hostvars['lab-firewall'].fw_ip_target | default(fw_target_ip) }}" }

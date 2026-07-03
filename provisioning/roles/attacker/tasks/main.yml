@@ -18,7 +18,7 @@
 
 - name: Route target-net traffic through the Lab Firewall (forces the block path)
   ansible.builtin.command:
-    cmd: "ip route replace {{ target_net_cidr }} via {{ fw_attacker_ip }}"
+    cmd: "ip route replace {{ target_net_cidr }} via {{ hostvars['lab-firewall'].fw_ip_attacker | default(fw_attacker_ip) }}"
   changed_when: false
   failed_when: false
 
@@ -40,7 +40,8 @@
       [Service]
       Type=simple
       ExecStart=/usr/local/bin/generate_suspicious_traffic.sh {{ target_service_ip }} {{ target_service_http_port }}
-      Restart=on-failure
+      Restart=always
+      RestartSec=3
       [Install]
       WantedBy=multi-user.target
 

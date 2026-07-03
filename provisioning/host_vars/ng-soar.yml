@@ -1,7 +1,8 @@
 ---
-# soar-net host -> reach both lab networks through the Lab Firewall (.254).
+# soar-net host -> reach both lab networks through the Lab Firewall.
 # Needed so the CACAO executor container (SNAT'd to the ng-soar host IP) can
-# reach the attacker for the verification probe and the firewall for evidence.
+# reach the firewall for evidence/counter reads. Next-hop is the firewall's REAL
+# soar-net IP (derived by the lab_firewall role), .254 as fallback.
 lab_static_routes:
-  - { dest: "{{ attacker_net_cidr }}", via: "{{ fw_soar_ip }}" }
-  - { dest: "{{ target_net_cidr }}", via: "{{ fw_soar_ip }}" }
+  - { dest: "{{ attacker_net_cidr }}", via: "{{ hostvars['lab-firewall'].fw_ip_soar | default(fw_soar_ip) }}" }
+  - { dest: "{{ target_net_cidr }}", via: "{{ hostvars['lab-firewall'].fw_ip_soar | default(fw_soar_ip) }}" }
