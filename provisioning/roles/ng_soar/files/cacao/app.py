@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import datetime
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -176,25 +177,24 @@ def execute_cacao(pb):
     rc2, ruleset, err2 = _ssh(FW_HOST, FW_USER, "sudo nft list ruleset")
     step("captured firewall ruleset evidence", rc=rc2, ruleset=ruleset, stderr=err2)
 
-    # UML step 13: verify the traffic from the malicious IP is blocked.
-    # Drive the attacker host to attempt to reach the target; expect failure.
-    # Deterministic probe output: the remote command prints exactly REACHABLE or
-    # BLOCKED, independent of HTTP status codes or the "000" edge case.
-    verify_cmd = (f"curl -s -o /dev/null --max-time 6 "
-                  f"http://{TARGET_HOST}:{TARGET_PORT}/ && echo REACHABLE || echo BLOCKED")
-    rc3, vout, verr = _ssh(ATTACKER_HOST, FW_USER, verify_cmd)
-    # A failed probe SSH (rc != 0) is inconclusive, never a block (avoids false PASS).
-    if rc3 != 0:
+    # UML step 13: verify the block by reading the firewall's drop-rule counter.
+    # The attacker continuously drives traffic at the target THROUGH the firewall,
+    # so once the drop rule is in place its packet counter increments. This does
+    # NOT depend on NG-SOAR reaching the attacker host directly (only the
+    # firewall, which is on NG-SOAR's own subnet, must be reachable).
+    p1 = _rule_packets(source_ip)
+    time.sleep(6)
+    p2 = _rule_packets(source_ip)
+    if p1 is None or p2 is None:
         blocked, verify_state = False, "inconclusive"
-    elif "BLOCKED" in vout:
+    elif p2 > p1 or p2 > 0:
         blocked, verify_state = True, "blocked"
-    elif "REACHABLE" in vout:
-        blocked, verify_state = False, "reachable"
     else:
         blocked, verify_state = False, "inconclusive"
-    step("verified malicious traffic is blocked (UML 13)",
-         from_host=ATTACKER_HOST, to=f"{TARGET_HOST}:{TARGET_PORT}",
-         result=vout, blocked=blocked, state=verify_state, rc=rc3, stderr=verr)
+    probe_output = "BLOCKED" if blocked else "INCONCLUSIVE"
+    step("verified malicious traffic is blocked via firewall counter (UML 13)",
+         source_ip=source_ip, packets_before=p1, packets_after=p2,
+         blocked=blocked, state=verify_state)
 
     status = "success" if (rc == 0 and blocked) else "completed-with-warnings"
     report = {
@@ -204,7 +204,8 @@ def execute_cacao(pb):
         "source_ip_blocked": source_ip,
         "validation": verdict,
         "firewall_evidence": ruleset,
-        "verification": {"blocked": blocked, "state": verify_state, "probe_output": vout},
+        "verification": {"blocked": blocked, "state": verify_state,
+                         "probe_output": probe_output, "packets": p2},
         "log": log,
         "completed_at": now(),
     }
@@ -221,6 +222,31 @@ def _ssh(host, user, command):
         return p.returncode, p.stdout.strip(), p.stderr.strip()
     except Exception as e:  # noqa: BLE001
         return 255, "", f"ssh error: {e}"
+
+
+def _rule_packets(source_ip):
+    """Packet count of the cacao-block drop rule on the firewall, or None.
+
+    Reads `nft -j list ruleset` over SSH to the firewall (which is on NG-SOAR's
+    own subnet, so always reachable) and finds the rule tagged with the
+    cacao-block-<ip> comment.
+    """
+    rc, out, err = _ssh(FW_HOST, FW_USER, "sudo nft -j list ruleset")
+    if rc != 0 or not out:
+        return None
+    try:
+        data = json.loads(out)
+    except (ValueError, TypeError):
+        return None
+    want = f"cacao-block-{source_ip}"
+    for item in data.get("nftables", []):
+        rule = item.get("rule") if isinstance(item, dict) else None
+        if not isinstance(rule, dict) or rule.get("comment") != want:
+            continue
+        for expr in rule.get("expr", []):
+            if isinstance(expr, dict) and "counter" in expr:
+                return expr["counter"].get("packets", 0)
+    return None
 
 
 def _persist(report):

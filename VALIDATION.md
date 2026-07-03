@@ -131,7 +131,34 @@ widen the healthcheck `start_period` (the SPA is slow to warm up) or correct its
 health endpoint. If the GUI is never needed, gate that service out of
 `NG-SOAR.yml`.
 
-## 7. Conclusion
+## 7. Connectivity hardening (soar-net <-> lab-nets)
+
+The deploy-time self-test surfaced that `ng-soar` could reach the firewall
+(`10.10.30.254`) but not the attacker (`10.10.10.10`) — the soar-net<->lab-net
+path was incomplete. Fixes:
+
+- **No `.254` assumption** (`lab_firewall` role): the firewall now derives its
+  REAL IP on each lab network from `ansible_all_ipv4_addresses` and publishes
+  `fw_ip_soar` / `fw_ip_attacker` / `fw_ip_target` as host facts. All inter-network
+  routes (`host_vars/*`, attacker/lab_target inline routes) use those facts as the
+  next-hop, with the `.254` convention only as a fallback.
+- **Masquerade** (`lab_firewall` nftables `inet nat`): soar-net -> lab-nets traffic
+  is masqueraded at the firewall, so replies return via the firewall without
+  needing return routes on the lab hosts. The attacker->target axis
+  (`src 10.10.10.0/24`) is NOT masqueraded, so the CACAO source-IP block stays
+  fully effective.
+- **Counter-based verification** (`app.py`): UML 13 no longer depends on NG-SOAR
+  reaching the attacker over SSH. After applying the drop rule, the executor reads
+  the firewall's `cacao-block-<ip>` rule packet counter (`nft -j list ruleset`) —
+  only the firewall (on NG-SOAR's own subnet) must be reachable. `blocked` iff the
+  counter is/goes positive; `probe_output` is `BLOCKED`/`INCONCLUSIVE`. The attacker
+  now generates traffic continuously (`Restart=always`) so the counter increments.
+- **Self-test** requires only firewall reachability (attacker SSH gate removed).
+- **Diagnostics** (`net_diag` role, `run_net_diag` default true): prints interfaces,
+  routes, firewall ruleset and ping/traceroute between peers into the deploy log to
+  reveal the real firewall IPs and any remaining path break.
+
+## 8. Conclusion
 
 All 16 UML steps are traceable to concrete resources; infrastructure choices
 (images, flavors, mgmt_user, NG-SOAR Docker deployment, command logging,

@@ -41,7 +41,7 @@
       delay: 5
       until: st_health.status == 200
 
-    - name: Readiness - executor host can manage the firewall (non-mutating)
+    - name: Readiness - executor host can manage the firewall (non-mutating, mandatory)
       ansible.builtin.command:
         cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ fw_soar_ip }} 'sudo nft list ruleset'"
       register: st_fw_ready
@@ -51,25 +51,14 @@
       changed_when: false
       failed_when: false
 
-    - name: Readiness - executor host can reach the attacker over SSH (non-mutating)
-      ansible.builtin.command:
-        cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ malicious_source_ip }} 'echo ready'"
-      register: st_atk_ready
-      retries: 12
-      delay: 5
-      until: st_atk_ready.rc == 0
-      changed_when: false
-      failed_when: false
-
-    - name: Assert both readiness paths are up
+    - name: Assert the firewall management path is up
       ansible.builtin.assert:
         that:
           - st_fw_ready.rc == 0
-          - st_atk_ready.rc == 0
         fail_msg: >-
           SELFTEST: executor host cannot reach the firewall ({{ fw_soar_ip }}, rc={{ st_fw_ready.rc }})
-          or the attacker ({{ malicious_source_ip }}, rc={{ st_atk_ready.rc }}) over SSH.
-          Check the soar-fw key/sudo and the soar-net<->lab-nets routes.
+          over SSH. Check the soar-fw key/sudo and that the firewall is on soar-net.
+          (The block is verified by firewall counter, so attacker SSH is NOT required.)
 
     - name: "UML 7-8 - validate the reference playbook"
       ansible.builtin.uri:
