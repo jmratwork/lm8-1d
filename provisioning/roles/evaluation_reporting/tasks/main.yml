@@ -12,6 +12,12 @@
     state: present
     update_cache: true
 
+- name: Ensure the evaluation service directory exists
+  ansible.builtin.file:
+    path: /opt/evaluation
+    state: directory
+    mode: "0755"
+
 - name: Deploy the evaluation/reporting service
   ansible.builtin.copy:
     src: evaluation.py
