@@ -178,17 +178,17 @@ def execute_cacao(pb):
 
     # UML step 13: verify the traffic from the malicious IP is blocked.
     # Drive the attacker host to attempt to reach the target; expect failure.
-    verify_cmd = (f"curl -s -o /dev/null -w '%{{http_code}}' --max-time 6 "
-                  f"http://{TARGET_HOST}:{TARGET_PORT}/ || echo BLOCKED")
+    # Deterministic probe output: the remote command prints exactly REACHABLE or
+    # BLOCKED, independent of HTTP status codes or the "000" edge case.
+    verify_cmd = (f"curl -s -o /dev/null --max-time 6 "
+                  f"http://{TARGET_HOST}:{TARGET_PORT}/ && echo REACHABLE || echo BLOCKED")
     rc3, vout, verr = _ssh(ATTACKER_HOST, FW_USER, verify_cmd)
-    # Only trust the probe when the SSH to the probe host actually succeeded.
-    # A failed SSH (rc != 0, typically empty output) is NOT evidence of a block
-    # and must not yield a false "blocked" (which would produce a false PASS).
+    # A failed probe SSH (rc != 0) is inconclusive, never a block (avoids false PASS).
     if rc3 != 0:
         blocked, verify_state = False, "inconclusive"
-    elif "BLOCKED" in vout or vout.strip() == "000":
+    elif "BLOCKED" in vout:
         blocked, verify_state = True, "blocked"
-    elif vout.strip().isdigit():
+    elif "REACHABLE" in vout:
         blocked, verify_state = False, "reachable"
     else:
         blocked, verify_state = False, "inconclusive"
