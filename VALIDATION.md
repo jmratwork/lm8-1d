@@ -91,7 +91,33 @@ To keep every training level non-blocking on the deployed sandbox:
   requests (`GET /admin`, `GET /.env`, port-22 scan) so level 7 (`/.env`) is
   solvable from the workstation without touching attacker/target logs.
 - **Honest verification** (`app.py`): a failed probe SSH is now reported as
-  `inconclusive` instead of `blocked`, preventing a false `PASS` (level 29).
+  `inconclusive` instead of `blocked`, preventing a false `PASS` (level 29). The
+  probe prints a deterministic `BLOCKED`/`REACHABLE` token (exact for level 26).
+- **Deterministic malicious IP/port**: the APG `variables.yml` was removed. It
+  declared `malicious_source_ip` (type IP) and `target_service_port` (type port)
+  as randomized generators, and the platform injected a random IP as an extra-var
+  that overrode the fixed `10.10.10.10` from `group_vars`, so the executor blocked
+  a non-existent IP (breaking levels 24/26/29 and contradicting the student
+  artefacts). `malicious_source_ip=10.10.10.10` and `target_service_http_port=80`
+  now come solely from `group_vars/all/main.yml`. (`variant_sandboxes` is false in
+  the training definition, so no APG variant answers are needed.)
+- **Idempotent self-test**: `scenario_selftest` now retries only the non-mutating
+  readiness checks, flushes the firewall to base, runs `/execute` exactly once,
+  and always reloads the base ruleset — so no duplicate `cacao-block-*` rules
+  accumulate.
+
+### Decision — skip command logging on Kali (metasploit patch, non-blocking)
+
+`sandbox-logging` v1.0.0 pulls in `sandbox-logging-msf`, guarded by
+`when: ansible_distribution == 'Kali'` and with **no disable toggle**. Its
+`metasploit-patch.yml` runs `find / -regex '.*metasploit.*shell.rb'`, which races
+`/proc` and returns a non-zero rc, failing the deploy on the only Kali host
+(`attacker`). **Decision: skip `sandbox-logging` on Kali hosts** (`all` role
+`when: ansible_distribution != 'Kali'`). Rationale: this scenario does not use
+metasploit (the attacker generates traffic with curl/nc), and the attacker is an
+automated host with no trainee-driven shell to log; all non-Kali hosts keep full
+command logging. Alternative (not taken): pin a newer `sandbox-logging` without
+the fragile `find`.
 
 ### Known non-blocking issue — cacao-roaster GUI (FIX 4, low priority)
 

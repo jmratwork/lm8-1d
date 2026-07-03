@@ -30,6 +30,13 @@
   when: ansible_distribution == "Kali"
 
 # --- CyberRangeCZ command logging -------------------------------------------
+# NOTE: sandbox-logging (v1.0.0) includes the `sandbox-logging-msf` sub-role
+# guarded by `when: ansible_distribution == 'Kali'`, and that sub-role has no
+# toggle. Its metasploit-patch.yml runs `find / -regex '.*metasploit.*shell.rb'`,
+# which races /proc and returns rc!=0, failing the deploy on the only Kali host
+# (attacker). This scenario does NOT use metasploit (the attacker generates
+# traffic with curl/nc), so we skip command logging on Kali. Non-Kali hosts
+# keep full logging. See VALIDATION.md for the decision record.
 - name: Set up command logging
   ansible.builtin.include_role:
     name: sandbox-logging
@@ -37,4 +44,5 @@
     slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
   when:
     - ansible_system == "Linux"
+    - ansible_distribution != "Kali"
     - inventory_hostname not in ['proxy-jump', 'man']
