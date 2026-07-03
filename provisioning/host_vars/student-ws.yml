@@ -1,0 +1,5 @@
+---
+# soar-net host -> reach both lab networks through the Lab Firewall (.254).
+lab_static_routes:
+  - { dest: "{{ attacker_net_cidr }}", via: "{{ fw_soar_ip }}" }
+  - { dest: "{{ target_net_cidr }}", via: "{{ fw_soar_ip }}" }

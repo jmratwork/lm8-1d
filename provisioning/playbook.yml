@@ -68,6 +68,19 @@
   roles:
     - evaluation_reporting
 
+# --- Symmetric lab routing (soar-net <-> lab-nets via the firewall) ---------
+- name: Install symmetric static routes through the Lab Firewall
+  hosts:
+    - student-ws
+    - ng-soar
+    - evaluation-reporting
+    - attacker
+    - lab-target
+  become: true
+  gather_facts: true
+  roles:
+    - lab_routing
+
 # --- Cross-cutting config on all systems (Kali rsyslog fix + logging) ------
 - name: Configure all systems (command logging, host fixes)
   hosts: all

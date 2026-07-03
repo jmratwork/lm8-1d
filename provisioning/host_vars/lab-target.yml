@@ -1,0 +1,5 @@
+---
+# Return route to soar-net through the Lab Firewall (.254 on target-net).
+# The target<->attacker route is added by the `lab_target` role and is left intact.
+lab_static_routes:
+  - { dest: "{{ soar_net_cidr }}", via: "{{ fw_target_ip }}" }
