@@ -52,6 +52,14 @@
     dest: /usr/local/bin/cacao-client
     mode: "0755"
 
+- name: Install the instructor smoke-test script (per-level checks)
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../scenario_selftest/files/scenario-smoketest.sh"
+    dest: /usr/local/sbin/scenario-smoketest.sh
+    owner: root
+    group: root
+    mode: "0750"
+
 - name: Point the client at NG-SOAR and Evaluation/Reporting
   ansible.builtin.copy:
     dest: /etc/profile.d/cacao-client.sh
