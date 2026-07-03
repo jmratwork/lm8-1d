@@ -1,0 +1,3 @@
+---
+# Toggle the deploy-time scenario self-test. Default on; set to false to skip.
+run_scenario_selftest: true

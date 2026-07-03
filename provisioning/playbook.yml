@@ -96,3 +96,11 @@
   gather_facts: true
   roles:
     - man
+
+# --- LAST: deploy-time end-to-end self-test of the block path (with rollback)
+- name: Scenario self-test on NG-SOAR (asserts the runtime block path)
+  hosts: ng-soar
+  become: true
+  gather_facts: false
+  roles:
+    - scenario_selftest

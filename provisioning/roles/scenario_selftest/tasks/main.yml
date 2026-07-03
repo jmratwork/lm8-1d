@@ -1,0 +1,118 @@
+---
+# =============================================================================
+# role: scenario_selftest
+# Deploy-time END-TO-END assertion of the CACAO block path, run on ng-soar as
+# the LAST provisioning step. Turns the silent runtime risk (executor->attacker
+# probe / firewall block) into a VISIBLE deployment failure.
+#
+# Flow: validate -> execute (retried for warm-up) -> summary, asserting the full
+# contract, then ALWAYS rolls the firewall back to its base ruleset so the
+# baseline is clean (training level 23 expects HTTP 200 before any block).
+#
+# Guarded by `run_scenario_selftest` (default true). Leaves no side effects.
+# =============================================================================
+
+- name: Install the instructor smoke-test script (always)
+  ansible.builtin.copy:
+    src: scenario-smoketest.sh
+    dest: /usr/local/sbin/scenario-smoketest.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Scenario end-to-end self-test (block path) with mandatory rollback
+  when: run_scenario_selftest | default(true) | bool
+  vars:
+    selftest_executor_url: "http://127.0.0.1:9100"
+    selftest_eval_url: "http://{{ evaluation_ip }}:9000"
+    selftest_key: "/opt/ng-soar-cacao/keys/id_ed25519"
+    selftest_ssh_opts: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8"
+    selftest_pb: >-
+      {{ lookup('file', playbook_dir + '/roles/ng_soar/files/cacao-toolkit/sample_block_ip_playbook.json')
+         | from_json
+         | combine({'playbook_variables': {'source_ip': {'value': malicious_source_ip}}}, recursive=true) }}
+  block:
+    - name: Wait for the CACAO Validator/Executor API
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/healthz"
+        status_code: 200
+      register: st_health
+      retries: 12
+      delay: 5
+      until: st_health.status == 200
+
+    - name: "UML 7-8 - validate the reference playbook"
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/validate"
+        method: POST
+        body_format: json
+        body: "{{ selftest_pb }}"
+        return_content: true
+      register: st_validate
+
+    - name: Assert the playbook is approved
+      ansible.builtin.assert:
+        that:
+          - st_validate.json.approved | bool
+        fail_msg: "SELFTEST: /validate did not approve the reference playbook: {{ st_validate.json.errors | default('?') }}"
+
+    - name: "UML 11-14 - execute (retry for service warm-up) and assert the block"
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/execute"
+        method: POST
+        body_format: json
+        body: "{{ selftest_pb }}"
+        return_content: true
+      register: st_exec
+      retries: 6
+      delay: 10
+      until:
+        - st_exec.status == 200
+        - st_exec.json.status == "success"
+        - st_exec.json.verification.state == "blocked"
+        - '"BLOCKED" in st_exec.json.verification.probe_output'
+        - ('cacao-block-' ~ malicious_source_ip) in st_exec.json.firewall_evidence
+
+    - name: "UML 16 - fetch the training summary and assert grade PASS"
+      ansible.builtin.uri:
+        url: "{{ selftest_eval_url }}/summary"
+        return_content: true
+      register: st_summary
+      retries: 6
+      delay: 5
+      until:
+        - st_summary.status == 200
+        - st_summary.json.grade == "PASS"
+
+    - name: Scenario self-test PASSED
+      ansible.builtin.debug:
+        msg: >-
+          SELFTEST OK: validate=approved, execute=success/blocked
+          (evidence has cacao-block-{{ malicious_source_ip }}), summary=PASS.
+
+  rescue:
+    - name: Scenario self-test FAILED - surface a clear diagnosis
+      ansible.builtin.fail:
+        msg: >-
+          SCENARIO SELF-TEST FAILED on ng-soar: the runtime block path is broken.
+          Likely cause: the cacao-validator-executor container cannot SSH to the
+          attacker ({{ malicious_source_ip }}) for the verification probe (missing
+          route/masquerade soar-net<->attacker-net), or firewall management is
+          not working (soar-fw key / passwordless sudo nft on {{ fw_soar_ip }}).
+          validate={{ st_validate.json | default('n/a') }} ;
+          execute={{ st_exec.json.status | default('n/a') }}/{{ st_exec.json.verification.state | default('n/a') }} ;
+          summary={{ st_summary.json.grade | default('n/a') }}.
+
+  always:
+    - name: ROLLBACK - reload the base firewall ruleset (clean baseline)
+      ansible.builtin.command:
+        cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ fw_soar_ip }} 'sudo nft -f /etc/nftables.conf'"
+      changed_when: true
+      failed_when: false
+
+    - name: ROLLBACK - confirm no cacao-block-* rules remain
+      ansible.builtin.command:
+        cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ fw_soar_ip }} 'sudo nft list ruleset'"
+      register: st_ruleset_after
+      changed_when: false
+      failed_when: '"cacao-block-" in st_ruleset_after.stdout'
