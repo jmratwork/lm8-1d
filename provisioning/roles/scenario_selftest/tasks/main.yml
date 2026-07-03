@@ -5,9 +5,9 @@
 # the LAST provisioning step. Turns the silent runtime risk (executor->attacker
 # probe / firewall block) into a VISIBLE deployment failure.
 #
-# Flow: validate -> execute (retried for warm-up) -> summary, asserting the full
-# contract, then ALWAYS rolls the firewall back to its base ruleset so the
-# baseline is clean (training level 23 expects HTTP 200 before any block).
+# Idempotent: readiness is retried (non-mutating), the mutating /execute runs
+# EXACTLY ONCE after flushing the firewall to its base ruleset, and the base
+# ruleset is ALWAYS reloaded afterwards (no cacao-block-* rule is left behind).
 #
 # Guarded by `run_scenario_selftest` (default true). Leaves no side effects.
 # =============================================================================
@@ -41,6 +41,36 @@
       delay: 5
       until: st_health.status == 200
 
+    - name: Readiness - executor host can manage the firewall (non-mutating)
+      ansible.builtin.command:
+        cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ fw_soar_ip }} 'sudo nft list ruleset'"
+      register: st_fw_ready
+      retries: 12
+      delay: 5
+      until: st_fw_ready.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: Readiness - executor host can reach the attacker over SSH (non-mutating)
+      ansible.builtin.command:
+        cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ malicious_source_ip }} 'echo ready'"
+      register: st_atk_ready
+      retries: 12
+      delay: 5
+      until: st_atk_ready.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: Assert both readiness paths are up
+      ansible.builtin.assert:
+        that:
+          - st_fw_ready.rc == 0
+          - st_atk_ready.rc == 0
+        fail_msg: >-
+          SELFTEST: executor host cannot reach the firewall ({{ fw_soar_ip }}, rc={{ st_fw_ready.rc }})
+          or the attacker ({{ malicious_source_ip }}, rc={{ st_atk_ready.rc }}) over SSH.
+          Check the soar-fw key/sudo and the soar-net<->lab-nets routes.
+
     - name: "UML 7-8 - validate the reference playbook"
       ansible.builtin.uri:
         url: "{{ selftest_executor_url }}/validate"
@@ -56,7 +86,13 @@
           - st_validate.json.approved | bool
         fail_msg: "SELFTEST: /validate did not approve the reference playbook: {{ st_validate.json.errors | default('?') }}"
 
-    - name: "UML 11-14 - execute (retry for service warm-up) and assert the block"
+    - name: Pre-clean the firewall to its base ruleset (idempotent baseline)
+      ansible.builtin.command:
+        cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ fw_mgmt_user }}@{{ fw_soar_ip }} 'sudo nft -f /etc/nftables.conf'"
+      changed_when: true
+      failed_when: false
+
+    - name: "UML 11-14 - execute the playbook EXACTLY ONCE"
       ansible.builtin.uri:
         url: "{{ selftest_executor_url }}/execute"
         method: POST
@@ -64,14 +100,20 @@
         body: "{{ selftest_pb }}"
         return_content: true
       register: st_exec
-      retries: 6
-      delay: 10
-      until:
-        - st_exec.status == 200
-        - st_exec.json.status == "success"
-        - st_exec.json.verification.state == "blocked"
-        - '"BLOCKED" in st_exec.json.verification.probe_output'
-        - ('cacao-block-' ~ malicious_source_ip) in st_exec.json.firewall_evidence
+
+    - name: Assert the block path succeeded end to end
+      ansible.builtin.assert:
+        that:
+          - st_exec.status == 200
+          - st_exec.json.status == "success"
+          - st_exec.json.verification.state == "blocked"
+          - '"BLOCKED" in st_exec.json.verification.probe_output'
+          - ('cacao-block-' ~ malicious_source_ip) in st_exec.json.firewall_evidence
+        fail_msg: >-
+          SELFTEST: execute did not confirm the block.
+          status={{ st_exec.json.status | default('?') }},
+          state={{ st_exec.json.verification.state | default('?') }},
+          probe={{ st_exec.json.verification.probe_output | default('?') }}.
 
     - name: "UML 16 - fetch the training summary and assert grade PASS"
       ansible.builtin.uri:
