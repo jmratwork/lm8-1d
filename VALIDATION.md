@@ -76,7 +76,36 @@ Aligned with the reference sandbox
 > ansible-playbook --syntax-check playbook.yml
 > ```
 
-## 6. Conclusion
+## 6. Training playthrough fixes (30-level training definition)
+
+To keep every training level non-blocking on the deployed sandbox:
+
+- **Symmetric routing** (`lab_routing` role + `host_vars/*`): soar-net hosts
+  (`student-ws`, `ng-soar`, `evaluation-reporting`) get routes to both lab
+  networks via the firewall `.254`, and `attacker`/`lab-target` get a return
+  route to soar-net. Pure routing (no NAT) preserves source IPs. Routes are
+  applied immediately and persisted via the `soar-lab-routes` systemd oneshot.
+  The pre-existing attacker↔target routes are left untouched (disjoint sets).
+  Unblocks levels 6, 23 (student-ws→target) and 26 (executor→attacker probe).
+- **Detection evidence** (`~/cacao/detected_traffic.log`): lists the malicious
+  requests (`GET /admin`, `GET /.env`, port-22 scan) so level 7 (`/.env`) is
+  solvable from the workstation without touching attacker/target logs.
+- **Honest verification** (`app.py`): a failed probe SSH is now reported as
+  `inconclusive` instead of `blocked`, preventing a false `PASS` (level 29).
+
+### Known non-blocking issue — cacao-roaster GUI (FIX 4, low priority)
+
+The `cyentific/cacao-roaster` container (KMS/GUI on `:3000`) reports
+`unhealthy`. **Decision: left as-is, non-blocking.** Rationale: the container is
+defined in the private `NG-SOAR.yml` pulled from the artefact SMB share, **not**
+in this repo, so its healthcheck cannot be patched here; and **no training level
+uses the GUI** — the 30-level training drives the CLI/API (`cacao-client` →
+NG-SOAR `:9100`), which is healthy. Recommended fix on the artefact side:
+widen the healthcheck `start_period` (the SPA is slow to warm up) or correct its
+health endpoint. If the GUI is never needed, gate that service out of
+`NG-SOAR.yml`.
+
+## 7. Conclusion
 
 All 16 UML steps are traceable to concrete resources; infrastructure choices
 (images, flavors, mgmt_user, NG-SOAR Docker deployment, command logging,
