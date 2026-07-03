@@ -181,10 +181,20 @@ def execute_cacao(pb):
     verify_cmd = (f"curl -s -o /dev/null -w '%{{http_code}}' --max-time 6 "
                   f"http://{TARGET_HOST}:{TARGET_PORT}/ || echo BLOCKED")
     rc3, vout, verr = _ssh(ATTACKER_HOST, FW_USER, verify_cmd)
-    blocked = ("BLOCKED" in vout) or (vout.strip() in ("", "000"))
+    # Only trust the probe when the SSH to the probe host actually succeeded.
+    # A failed SSH (rc != 0, typically empty output) is NOT evidence of a block
+    # and must not yield a false "blocked" (which would produce a false PASS).
+    if rc3 != 0:
+        blocked, verify_state = False, "inconclusive"
+    elif "BLOCKED" in vout or vout.strip() == "000":
+        blocked, verify_state = True, "blocked"
+    elif vout.strip().isdigit():
+        blocked, verify_state = False, "reachable"
+    else:
+        blocked, verify_state = False, "inconclusive"
     step("verified malicious traffic is blocked (UML 13)",
          from_host=ATTACKER_HOST, to=f"{TARGET_HOST}:{TARGET_PORT}",
-         result=vout, blocked=blocked, rc=rc3, stderr=verr)
+         result=vout, blocked=blocked, state=verify_state, rc=rc3, stderr=verr)
 
     status = "success" if (rc == 0 and blocked) else "completed-with-warnings"
     report = {
@@ -194,7 +204,7 @@ def execute_cacao(pb):
         "source_ip_blocked": source_ip,
         "validation": verdict,
         "firewall_evidence": ruleset,
-        "verification": {"blocked": blocked, "probe_output": vout},
+        "verification": {"blocked": blocked, "state": verify_state, "probe_output": vout},
         "log": log,
         "completed_at": now(),
     }
