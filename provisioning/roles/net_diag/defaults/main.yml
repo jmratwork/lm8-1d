@@ -1,0 +1,3 @@
+---
+# Toggle the (non-fatal) network diagnostics. Default on; set false to skip.
+run_net_diag: true
