@@ -41,7 +41,7 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
 | Node | Role | Image / mgmt_user / flavor | Networks (IP) |
 |------|------|----------------------------|----------------|
 | `ng-soar` | KMS + CACAO Validator/Executor (Docker) | ubuntu-noble-x86_64 / ubuntu / `standard.xsmedium` | soar-net 10.10.30.10 |
-| `lab-firewall` | nftables gateway (attacker→target path) | debian-12-x86_64 / debian / `standard.small` | soar .254, attacker .254, target .254 |
+| `lab-firewall` **(ROUTER)** | nftables enforcement point, in-path attacker→target | debian-12-x86_64 / debian / `standard.small` | router `.254` on soar/attacker/target nets |
 | `lab-target` | protected HTTP/SSH service | ubuntu-noble-x86_64 / ubuntu / `standard.small` | target-net 10.10.20.10 |
 | `attacker` | suspicious traffic / malicious test IP | kali / debian / `standard.xmedium` | attacker-net 10.10.10.10 |
 | `student-ws` | trainee authoring workstation | ubuntu-noble-x86_64 / ubuntu / `standard.small` | soar-net 10.10.30.20 |
@@ -51,12 +51,14 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
 **Networks (disjoint):** soar-net `10.10.30.0/24`, attacker-net `10.10.10.0/24`,
 target-net `10.10.20.0/24`, wan `100.100.100.0/24`.
 
-Each router owns `.1` (the subnet gateway, as the platform/OpenStack expects).
-The **lab-firewall is connected to all three lab networks at `.254`**, so every
-attacker→target path crosses it. Provisioning installs static routes on
-`attacker` and `lab-target` so inter-lab traffic is forced through the firewall,
-making a source-IP block verifiable (UML step 13); Internet egress for
-provisioning stays via each network's router.
+`lab-firewall` is declared under **`routers`**, not `hosts`: the platform blocks
+transit forwarding on end-hosts (port security), but routers route/filter
+between subnets. It is multi-homed at `.254` on all three lab networks and is the
+**only node that forwards transit between them**, so the source-IP drop applied
+on its `forward` chain is genuinely in-path (UML step 12) and verifiable
+(step 13). The per-network `.1` routers provide the default gateway / Internet
+egress; provisioning installs static routes so inter-network traffic is forced
+through `lab-firewall` (`.254`).
 
 `topology.yml` uses `groups: []`; plays target hosts by name and use the
 platform auto-groups `hosts` / `routers` for the command-logging pass (same

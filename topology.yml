@@ -12,15 +12,19 @@
 #     note   : the Kali box is accessed with mgmt_user "debian".
 #
 # Design (see README.md for the full UML -> resource mapping):
-#   - Faithful to the UML: attacker and lab-target live on separate networks and
-#     "lab-firewall" is the L3 gateway/firewall BETWEEN them, so a source-IP
-#     block is verifiable (UML steps 12-13).
-#   - Per-network routers own ".1" (the subnet gateway, as in the reference and
-#     as OpenStack expects). The firewall takes ".254" on each network to avoid
-#     colliding with the reserved gateway/DHCP addresses.
-#   - Provisioning installs static routes on attacker/lab-target so inter-lab
-#     traffic is forced through the firewall (data path), while Internet egress
-#     for provisioning stays via each network's router.
+#   - Faithful to the UML: attacker and lab-target live on SEPARATE networks and
+#     "lab-firewall" is a ROUTER that sits BETWEEN them (it is the only node that
+#     forwards transit between the lab networks), so the source-IP block applied
+#     on the firewall's forward chain is genuinely in-path and verifiable
+#     (UML step 12 enforce on Lab Firewall, step 13 verify attacker->target).
+#   - lab-firewall is declared under `routers` (NOT `hosts`): the platform blocks
+#     transit forwarding on end-HOSTS (port security) but routers are meant to
+#     route/filter between subnets. It is multi-homed on all three lab networks
+#     at ".254".
+#   - The per-network routers own ".1" (default gateway / Internet egress). The
+#     provisioning installs static routes so inter-network traffic is forced
+#     through lab-firewall (.254), while Internet egress stays via the ".1"
+#     routers.
 # =============================================================================
 
 name: puc2-subcase2d-cacao-firewall-ip-block
@@ -37,15 +41,6 @@ hosts:
       mgmt_user: ubuntu
       mgmt_protocol: ssh
     flavor: standard.xsmedium
-
-  # Lab Firewall: dual/tri-homed Linux host running nftables. L3 gateway between
-  # attacker-net, target-net and soar-net.
-  - name: lab-firewall
-    base_box:
-      image: debian-12-x86_64
-      mgmt_user: debian
-      mgmt_protocol: ssh
-    flavor: standard.small
 
   # Lab Target Service: the protected HTTP/SSH service (mirrors reference "victim").
   - name: lab-target
@@ -82,7 +77,11 @@ hosts:
     flavor: standard.small
 
 # -----------------------------------------------------------------------------
-# Routers (WAN/Internet egress per network; each owns the ".1" gateway)
+# Routers
+#   - soar/attacker/target-router: per-network ".1" default gateway + WAN egress.
+#   - lab-firewall: multi-homed ".254" ROUTER that routes/filters between the
+#     lab networks (the UML enforcement point; it forwards transit, an end-host
+#     cannot). Managed by NG-SOAR over SSH from soar-net.
 # -----------------------------------------------------------------------------
 routers:
   - name: soar-router
@@ -101,6 +100,13 @@ routers:
     base_box:
       image: debian-12-x86_64
       mgmt_user: debian
+    flavor: standard.small
+
+  - name: lab-firewall
+    base_box:
+      image: debian-12-x86_64
+      mgmt_user: debian
+      mgmt_protocol: ssh
     flavor: standard.small
 
 # -----------------------------------------------------------------------------
@@ -140,17 +146,6 @@ net_mappings:
     network: soar-net
     ip: 10.10.30.30
 
-  # Lab firewall: gateway/enforcement interface on each network (.254)
-  - host: lab-firewall
-    network: soar-net
-    ip: 10.10.30.254
-  - host: lab-firewall
-    network: attacker-net
-    ip: 10.10.10.254
-  - host: lab-firewall
-    network: target-net
-    ip: 10.10.20.254
-
   # Attacker (malicious test source IP)
   - host: attacker
     network: attacker-net
@@ -174,6 +169,17 @@ router_mappings:
   - router: target-router
     network: target-net
     ip: 10.10.20.1
+
+  # lab-firewall ROUTER: multi-homed ".254" enforcement point between the nets
+  - router: lab-firewall
+    network: soar-net
+    ip: 10.10.30.254
+  - router: lab-firewall
+    network: attacker-net
+    ip: 10.10.10.254
+  - router: lab-firewall
+    network: target-net
+    ip: 10.10.20.254
 
 # -----------------------------------------------------------------------------
 # Groups: kept empty on purpose. Plays target hosts by name (as in the reference

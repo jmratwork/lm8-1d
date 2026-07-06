@@ -158,7 +158,28 @@ path was incomplete. Fixes:
   routes, firewall ruleset and ping/traceroute between peers into the deploy log to
   reveal the real firewall IPs and any remaining path break.
 
-## 8. Conclusion
+## 8. Root-cause fix — Lab Firewall is a ROUTER (in-path enforcement)
+
+Deploy diagnostics (`net_diag`) confirmed the multi-homed `lab-firewall` **host**
+could reach each network directly but did **not forward transit** between them
+(platform port-security blocks host forwarding), so attacker→target never crossed
+it and a `forward`-chain rule could not match.
+
+**Fix (topology.yml):** `lab-firewall` is moved from `hosts` to **`routers`**,
+multi-homed at `.254` on soar/attacker/target nets. Routers are allowed to
+route/filter between subnets, so the firewall is now genuinely in the
+attacker→target path. This keeps enforcement exactly where the UML puts it
+(step 12 on the Lab Firewall, step 13 verify attacker→target) — no enforcement is
+moved to another host. The `lab_firewall` role, the `.254` static routes
+(`lab_routing`), and the executor's `nft ... inet filter forward ... drop` /
+counter verification are unchanged; they simply work now that `.254` forwards.
+Per-network `.1` routers still provide the default gateway / WAN egress.
+
+Structural checks: `lab-firewall` in `routers` (not `hosts`); three
+`router_mappings` at `.254`; all mappings reference valid nodes; names unique;
+CIDRs disjoint. ✔
+
+## 9. Conclusion
 
 All 16 UML steps are traceable to concrete resources; infrastructure choices
 (images, flavors, mgmt_user, NG-SOAR Docker deployment, command logging,
