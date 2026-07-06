@@ -10,9 +10,10 @@ services:
     ports:
       - "9100:9100"
     environment:
-      FW_HOST: "{{ fw_soar_ip }}"
-      FW_MGMT_USER: "{{ fw_mgmt_user }}"
+      ENFORCE_HOST: "{{ target_service_ip }}"
+      ENFORCE_USER: "{{ mgmt_user }}"
       ATTACKER_HOST: "{{ malicious_source_ip }}"
+      ATTACKER_USER: "{{ mgmt_user }}"
       TARGET_HOST: "{{ target_service_ip }}"
       TARGET_PORT: "{{ target_service_http_port }}"
       EVAL_URL: "http://{{ evaluation_ip }}:9000/ingest"

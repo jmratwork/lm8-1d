@@ -22,15 +22,17 @@ import json
 import os
 import subprocess
 import datetime
-import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # --- Environment (injected by docker-compose) --------------------------------
-FW_HOST = os.environ.get("FW_HOST", "10.10.10.1")            # lab-firewall mgmt IP (soar-net)
-FW_USER = os.environ.get("FW_MGMT_USER", "soar-fw")
+# Flat network, host-based enforcement: the block is applied on the Lab Target
+# Service (nftables input) and verified by driving the attacker at the target.
+ENFORCE_HOST = os.environ.get("ENFORCE_HOST", "10.10.20.10")   # lab-target mgmt IP
+ENFORCE_USER = os.environ.get("ENFORCE_USER", "soar-fw")
 ATTACKER_HOST = os.environ.get("ATTACKER_HOST", "10.10.10.10")
-TARGET_HOST = os.environ.get("TARGET_HOST", "10.10.20.10")
+ATTACKER_USER = os.environ.get("ATTACKER_USER", "soar-fw")
+TARGET_HOST = os.environ.get("TARGET_HOST", "10.10.20.10")     # HTTP target for the probe
 TARGET_PORT = os.environ.get("TARGET_PORT", "80")
 EVAL_URL = os.environ.get("EVAL_URL", "http://10.10.30.30:9000/ingest")
 SSH_KEY = os.environ.get("SSH_KEY", "/keys/id_ed25519")
@@ -166,35 +168,38 @@ def execute_cacao(pb):
     step(f"executing approved playbook '{pb.get('name')}' (id={pb.get('id')})")
     step(f"resolved source_ip parameter -> {source_ip}")
 
-    # UML step 12: apply firewall rule (block malicious source IP) on Lab Firewall.
-    nft_cmd = (f"sudo nft add rule inet filter forward ip saddr {source_ip} "
+    # UML step 12: apply the block on the Lab Target Service (nftables input).
+    # Ensure the base table/chain exists, then append the source-IP drop rule.
+    _ssh(ENFORCE_HOST, ENFORCE_USER, "sudo nft add table inet filter")
+    _ssh(ENFORCE_HOST, ENFORCE_USER,
+         "sudo nft 'add chain inet filter input { type filter hook input priority 0 ; policy accept ; }'")
+    nft_cmd = (f"sudo nft add rule inet filter input ip saddr {source_ip} "
                f"counter drop comment \\\"cacao-block-{source_ip}\\\"")
-    rc, out, err = _ssh(FW_HOST, FW_USER, nft_cmd)
-    step("applied firewall block rule on Lab Firewall (UML 12)",
-         host=FW_HOST, command=nft_cmd, rc=rc, stdout=out, stderr=err)
+    rc, out, err = _ssh(ENFORCE_HOST, ENFORCE_USER, nft_cmd)
+    step("applied block rule on the Lab Target Service (UML 12)",
+         host=ENFORCE_HOST, command=nft_cmd, rc=rc, stdout=out, stderr=err)
 
-    # Capture firewall evidence (ruleset + counters).
-    rc2, ruleset, err2 = _ssh(FW_HOST, FW_USER, "sudo nft list ruleset")
-    step("captured firewall ruleset evidence", rc=rc2, ruleset=ruleset, stderr=err2)
+    # Capture firewall evidence (the target's live ruleset with the comment).
+    rc2, ruleset, err2 = _ssh(ENFORCE_HOST, ENFORCE_USER, "sudo nft list ruleset")
+    step("captured target ruleset evidence", rc=rc2, ruleset=ruleset, stderr=err2)
 
-    # UML step 13: verify the block by reading the firewall's drop-rule counter.
-    # The attacker continuously drives traffic at the target THROUGH the firewall,
-    # so once the drop rule is in place its packet counter increments. This does
-    # NOT depend on NG-SOAR reaching the attacker host directly (only the
-    # firewall, which is on NG-SOAR's own subnet, must be reachable).
-    p1 = _rule_packets(source_ip)
-    time.sleep(6)
-    p2 = _rule_packets(source_ip)
-    if p1 is None or p2 is None:
+    # UML step 13: verify the block by driving the attacker at the target.
+    # Deterministic output: the remote command prints exactly REACHABLE or BLOCKED.
+    verify_cmd = (f"curl -s -o /dev/null --max-time 6 "
+                  f"http://{TARGET_HOST}:{TARGET_PORT}/ && echo REACHABLE || echo BLOCKED")
+    rc3, vout, verr = _ssh(ATTACKER_HOST, ATTACKER_USER, verify_cmd)
+    if rc3 != 0:
         blocked, verify_state = False, "inconclusive"
-    elif p2 > p1 or p2 > 0:
+    elif "BLOCKED" in vout:
         blocked, verify_state = True, "blocked"
+    elif "REACHABLE" in vout:
+        blocked, verify_state = False, "reachable"
     else:
         blocked, verify_state = False, "inconclusive"
-    probe_output = "BLOCKED" if blocked else "INCONCLUSIVE"
-    step("verified malicious traffic is blocked via firewall counter (UML 13)",
-         source_ip=source_ip, packets_before=p1, packets_after=p2,
-         blocked=blocked, state=verify_state)
+    probe_output = "BLOCKED" if blocked else (vout.strip() or "INCONCLUSIVE")
+    step("verified malicious traffic is blocked (UML 13)",
+         from_host=ATTACKER_HOST, to=f"{TARGET_HOST}:{TARGET_PORT}",
+         result=vout, blocked=blocked, state=verify_state, rc=rc3, stderr=verr)
 
     status = "success" if (rc == 0 and blocked) else "completed-with-warnings"
     report = {
@@ -205,7 +210,7 @@ def execute_cacao(pb):
         "validation": verdict,
         "firewall_evidence": ruleset,
         "verification": {"blocked": blocked, "state": verify_state,
-                         "probe_output": probe_output, "packets": p2},
+                         "probe_output": probe_output},
         "log": log,
         "completed_at": now(),
     }
@@ -222,31 +227,6 @@ def _ssh(host, user, command):
         return p.returncode, p.stdout.strip(), p.stderr.strip()
     except Exception as e:  # noqa: BLE001
         return 255, "", f"ssh error: {e}"
-
-
-def _rule_packets(source_ip):
-    """Packet count of the cacao-block drop rule on the firewall, or None.
-
-    Reads `nft -j list ruleset` over SSH to the firewall (which is on NG-SOAR's
-    own subnet, so always reachable) and finds the rule tagged with the
-    cacao-block-<ip> comment.
-    """
-    rc, out, err = _ssh(FW_HOST, FW_USER, "sudo nft -j list ruleset")
-    if rc != 0 or not out:
-        return None
-    try:
-        data = json.loads(out)
-    except (ValueError, TypeError):
-        return None
-    want = f"cacao-block-{source_ip}"
-    for item in data.get("nftables", []):
-        rule = item.get("rule") if isinstance(item, dict) else None
-        if not isinstance(rule, dict) or rule.get("comment") != want:
-            continue
-        for expr in rule.get("expr", []):
-            if isinstance(expr, dict) and "counter" in expr:
-                return expr["counter"].get("packets", 0)
-    return None
 
 
 def _persist(report):

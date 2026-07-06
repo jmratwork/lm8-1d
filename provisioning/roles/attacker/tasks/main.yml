@@ -2,7 +2,8 @@
 # =============================================================================
 # role: attacker
 # Generates the "suspicious traffic from a test IP" (UML step 2). The attacker's
-# IP (10.10.10.10) is the malicious source IP the CACAO playbook blocks.
+# IP (10.10.10.10) is the malicious source IP the CACAO playbook blocks. On the
+# flat network the attacker reaches lab-target directly (no routing needed).
 # =============================================================================
 
 - name: Install traffic-generation tools
@@ -15,12 +16,6 @@
       - openssh-server
     state: present
     update_cache: true
-
-- name: Route target-net traffic through the Lab Firewall (forces the block path)
-  ansible.builtin.command:
-    cmd: "ip route replace {{ target_net_cidr }} via {{ hostvars['lab-firewall'].fw_ip_attacker | default(fw_attacker_ip) }}"
-  changed_when: false
-  failed_when: false
 
 - name: Deploy the suspicious-traffic generator
   ansible.builtin.copy:
@@ -53,15 +48,15 @@
     state: started
   failed_when: false
 
-# --- NG-SOAR executor drives verification (UML 13) from this host ----------
-- name: Create NG-SOAR management user on the attacker
+# --- NG-SOAR executor drives the verification probe from this host (UML 13) --
+- name: Create the NG-SOAR management user on the attacker
   ansible.builtin.user:
-    name: "{{ fw_mgmt_user }}"
+    name: "{{ mgmt_user }}"
     shell: /bin/bash
     create_home: true
 
 - name: Authorize the NG-SOAR executor public key on the attacker
   ansible.posix.authorized_key:
-    user: "{{ fw_mgmt_user }}"
+    user: "{{ mgmt_user }}"
     state: present
     key: "{{ hostvars['ng-soar']['soar_executor_pubkey'] | default(soar_fw_authorized_key) }}"

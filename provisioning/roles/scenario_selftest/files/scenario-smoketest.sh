@@ -3,11 +3,11 @@
 # scenario-smoketest.sh  ---  INSTRUCTOR TOOL  (contains the level answers!)
 # -----------------------------------------------------------------------------
 # Runs the PUC2 Sub Case 2d runtime checks and prints PASS/FAIL per training
-# level. Safe to re-run: it rolls the firewall back to its base ruleset at the
-# end so no cacao-block-* rule is left in place (level 23 expects HTTP 200).
+# level. Safe to re-run: it rolls lab-target back to its base ruleset at the end
+# so no cacao-block-* rule is left in place (level 23 expects HTTP 200).
 #
 # Usage:  sudo /usr/local/sbin/scenario-smoketest.sh
-# Env overrides: NG_SOAR_URL, EVAL_URL, TARGET_URL, EVIDENCE, SAMPLE, FW_KEY
+# Env overrides: NG_SOAR_URL, EVAL_URL, TARGET_URL, EVIDENCE, SAMPLE, ENF_KEY
 # =============================================================================
 set -u
 
@@ -15,9 +15,10 @@ NG_SOAR_URL="${NG_SOAR_URL:-http://10.10.30.10:9100}"
 EVAL_URL="${EVAL_URL:-http://10.10.30.30:9000}"
 TARGET_URL="${TARGET_URL:-http://10.10.20.10/}"
 MAL_IP="${MAL_IP:-10.10.10.10}"
-FW_HOST="${FW_HOST:-10.10.30.254}"
-FW_USER="${FW_USER:-soar-fw}"
-FW_KEY="${FW_KEY:-/opt/ng-soar-cacao/keys/id_ed25519}"
+# Host-based enforcement point = lab-target (nftables input).
+ENF_HOST="${ENF_HOST:-10.10.20.10}"
+ENF_USER="${ENF_USER:-soar-fw}"
+ENF_KEY="${ENF_KEY:-/opt/ng-soar-cacao/keys/id_ed25519}"
 
 # Locate the evidence log and the sample playbook across likely hosts.
 EVIDENCE="${EVIDENCE:-}"
@@ -80,18 +81,18 @@ else
   [ "$grade" = "PASS" ] && ok "L29 summary grade=PASS" || ko "L29 summary grade=$grade"
 fi
 
-# --- ROLLBACK : restore base ruleset ---------------------------------------
-if [ -f "$FW_KEY" ]; then
-  ssh -i "$FW_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o ConnectTimeout=8 "$FW_USER@$FW_HOST" "sudo nft -f /etc/nftables.conf" \
-      && echo "  [ROLLBACK] base ruleset reloaded on $FW_HOST" \
+# --- ROLLBACK : restore lab-target base ruleset ----------------------------
+if [ -f "$ENF_KEY" ]; then
+  ssh -i "$ENF_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      -o ConnectTimeout=8 "$ENF_USER@$ENF_HOST" "sudo nft -f /etc/nftables.conf" \
+      && echo "  [ROLLBACK] base ruleset reloaded on lab-target ($ENF_HOST)" \
       || echo "  [ROLLBACK] WARNING: could not reload base ruleset"
-  left=$(ssh -i "$FW_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-         -o ConnectTimeout=8 "$FW_USER@$FW_HOST" "sudo nft list ruleset" | grep -c "cacao-block-")
+  left=$(ssh -i "$ENF_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+         -o ConnectTimeout=8 "$ENF_USER@$ENF_HOST" "sudo nft list ruleset" | grep -c "cacao-block-")
   [ "$left" = "0" ] && echo "  [ROLLBACK] no cacao-block-* rules remain" \
                     || echo "  [ROLLBACK] WARNING: $left cacao-block-* rule(s) still present"
 else
-  echo "  [ROLLBACK] SKIP: firewall key $FW_KEY not on this host (run rollback from ng-soar)"
+  echo "  [ROLLBACK] SKIP: executor key $ENF_KEY not on this host (run rollback from ng-soar)"
 fi
 
 echo "=== result: PASS=$pass FAIL=$fail ==="
