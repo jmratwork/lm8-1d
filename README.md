@@ -27,8 +27,7 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
         ├── common/                   # base packages, scenario markers
         ├── docker_server/            # Docker + NG-SOAR stack (integrations pattern)
         ├── ng_soar/                  # KMS + CACAO Validator/Executor + toolkit
-        ├── lab_firewall/             # nftables gateway + NG-SOAR mgmt access
-        ├── lab_target/               # protected HTTP/SSH service
+        ├── lab_target/               # protected HTTP/SSH service + nftables input (enforcement)
         ├── attacker/                 # suspicious-traffic generator (test IP)
         ├── student_ws/               # brief + CACAO toolkit + cacao-client
         ├── evaluation_reporting/     # feedback ingest + training summary
@@ -38,27 +37,24 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
 
 ## Topology
 
-| Node | Role | Image / mgmt_user / flavor | Networks (IP) |
+| Node | Role | Image / mgmt_user / flavor | IP (lab-net) |
 |------|------|----------------------------|----------------|
-| `ng-soar` | KMS + CACAO Validator/Executor (Docker) | ubuntu-noble-x86_64 / ubuntu / `standard.xsmedium` | soar-net 10.10.30.10 |
-| `lab-firewall` **(ROUTER)** | nftables enforcement point, in-path attacker→target | debian-12-x86_64 / debian / `standard.small` | router `.254` on soar/attacker/target nets |
-| `lab-target` | protected HTTP/SSH service | ubuntu-noble-x86_64 / ubuntu / `standard.small` | target-net 10.10.20.10 |
-| `attacker` | suspicious traffic / malicious test IP | kali / debian / `standard.xmedium` | attacker-net 10.10.10.10 |
-| `student-ws` | trainee authoring workstation | ubuntu-noble-x86_64 / ubuntu / `standard.small` | soar-net 10.10.30.20 |
-| `evaluation-reporting` | feedback & summary | ubuntu-noble-x86_64 / ubuntu / `standard.small` | soar-net 10.10.30.30 |
-| `soar/attacker/target-router` | WAN egress + subnet gateway (.1) | debian-12-x86_64 / debian / `standard.small` | per-net .1 |
+| `ng-soar` | KMS + CACAO Validator/Executor (Docker) | ubuntu-noble-x86_64 / ubuntu / `standard.xsmedium` | 10.10.30.10 |
+| `lab-target` | protected HTTP/SSH service **+ host-based enforcement (nftables input)** | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.20.10 |
+| `attacker` | suspicious traffic / malicious test IP | kali / debian / `standard.xmedium` | 10.10.10.10 |
+| `student-ws` | trainee authoring workstation | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.30.20 |
+| `evaluation-reporting` | feedback & summary | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.30.30 |
+| `lab-router` **(ROUTER)** | Internet egress / default gateway | debian-12-x86_64 / debian / `standard.small` | 10.10.0.1 |
 
-**Networks (disjoint):** soar-net `10.10.30.0/24`, attacker-net `10.10.10.0/24`,
-target-net `10.10.20.0/24`, wan `100.100.100.0/24`.
+**One flat network:** `lab-net 10.10.0.0/16` (+ wan `100.100.100.0/24`).
 
-`lab-firewall` is declared under **`routers`**, not `hosts`: the platform blocks
-transit forwarding on end-hosts (port security), but routers route/filter
-between subnets. It is multi-homed at `.254` on all three lab networks and is the
-**only node that forwards transit between them**, so the source-IP drop applied
-on its `forward` chain is genuinely in-path (UML step 12) and verifiable
-(step 13). The per-network `.1` routers provide the default gateway / Internet
-egress; provisioning installs static routes so inter-network traffic is forced
-through `lab-firewall` (`.254`).
+The platform **isolates** sandbox networks — transit is not forwarded between
+them by a multi-homed host nor by the per-network routers (confirmed by deploy
+diagnostics). So all scenario hosts live on **one flat network** (`10.10.0.0/16`,
+keeping their exact IPs), and the CACAO block is enforced **host-based on
+`lab-target`** (nftables `input` drop on the malicious source IP), applied over
+SSH and verified by driving the attacker at the target — all directly reachable
+on the flat net. A single `lab-router` provides Internet egress.
 
 `topology.yml` uses `groups: []`; plays target hosts by name and use the
 platform auto-groups `hosts` / `routers` for the command-logging pass (same
@@ -79,7 +75,7 @@ convention as the reference sandbox).
 | 9 | Student → NG-SOAR: correct & resubmit | re-run `cacao-client validate` after edits |
 | 10 | NG-SOAR → Student: approved, ready to execute | `approved: true` verdict from validator |
 | 11 | Student → NG-SOAR: execute validated playbook | `cacao-client execute` → `POST /execute` |
-| 12 | NG-SOAR → Lab Firewall: apply block rule | `execute_cacao()` SSH `nft add rule ... saddr <ip> drop` |
+| 12 | NG-SOAR → Lab Firewall: apply block rule | `execute_cacao()` SSH to lab-target: `nft add rule inet filter input ... saddr <ip> drop` |
 | 13 | NG-SOAR → Lab Target: verify traffic blocked | executor drives attacker probe; `blocked: true` |
 | 14 | NG-SOAR → Student: logs, status, evidence | `/execute` response: log, `firewall_evidence` (nft ruleset), status |
 | 15 | NG-SOAR → Evaluation/Reporting: compile report | executor `POST /ingest` on evaluation host |
@@ -97,7 +93,7 @@ brings up the KMS so the training still runs.
 `ng_soar` then deploys the **CACAO Validator/Executor** container
 (`/opt/ng-soar-cacao`, `:9100`) that provides the runnable validation/execution
 used by the 16-step flow, publishes the CACAO toolkit through the KMS, and
-generates the SSH keypair the executor uses to manage the Lab Firewall. In
+generates the SSH keypair the executor uses to manage lab-target and attacker. In
 production this front-ends the real NG-SOAR/SOARCA executor
 (`:8080/trigger/playbook`).
 

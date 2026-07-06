@@ -179,7 +179,35 @@ Structural checks: `lab-firewall` in `routers` (not `hosts`); three
 `router_mappings` at `.254`; all mappings reference valid nodes; names unique;
 CIDRs disjoint. ✔
 
-## 9. Conclusion
+## 9. Definitive redesign — flat network + host-based enforcement
+
+Deploy diagnostics proved the sandbox networks are **isolated**: transit is not
+forwarded between them by a multi-homed host NOR by the per-network routers
+(attacker→target and soar→target were unreachable by every path, with the `.254`
+pin removed and the next-hop confirmed to be the `.1` router). No routing/NAT/
+firewall change can bridge them.
+
+**Redesign:**
+- **topology.yml:** one flat network `lab-net 10.10.0.0/16` with all five hosts at
+  their **unchanged** IPs (10.10.10.10 / 10.10.20.10 / 10.10.30.x) + a single
+  `lab-router` (10.10.0.1) for Internet egress. `lab-firewall` and the per-net
+  routers are removed.
+- **Enforcement (host-based):** the executor applies the block on **`lab-target`**
+  in the nftables **`input`** chain (`nft add rule inet filter input ip saddr <ip>
+  counter drop comment cacao-block-<ip>`) over direct SSH, and verifies by driving
+  the attacker at the target (`curl … && echo REACHABLE || echo BLOCKED`). All hosts
+  are directly reachable on the flat net — no firewall-in-path, no jump host.
+- Removed roles: `lab_firewall`, `lab_routing`, `net_diag`, `router_probe` (+
+  host_vars). Toolkit/brief updated to the `input` chain on `lab-target`
+  (matches the updated training JSON: L12 → `input`, L27 → `lab-target`).
+
+**Verified functionally** (local, mocked SSH): probe `BLOCKED` → `status=success`
+/ `state=blocked`; `REACHABLE` → `completed-with-warnings` / `reachable`; SSH-fail
+→ `inconclusive`; `firewall_evidence` carries `cacao-block-10.10.10.10`. The
+JSON contract (status/evidence/verification/summary) is unchanged, so all
+training gates stay exact.
+
+## 10. Conclusion
 
 All 16 UML steps are traceable to concrete resources; infrastructure choices
 (images, flavors, mgmt_user, NG-SOAR Docker deployment, command logging,

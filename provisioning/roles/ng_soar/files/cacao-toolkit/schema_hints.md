@@ -24,17 +24,17 @@ The NG-SOAR validator checks the following. Use these hints while authoring.
   `__SOURCE_IP__` placeholder inside the block command. This is the malicious
   IP from the exercise brief.
 
-## Action step shape (firewall block)
+## Action step shape (host-based block on the target)
 ```json
 "action--block-ip": {
   "type": "action",
-  "name": "Block source IP on the Lab Firewall",
+  "name": "Block source IP on the Lab Target Service",
   "on_completion": "end--01",
   "commands": [
-    { "type": "ssh", "command": "sudo nft add rule inet filter forward ip saddr __SOURCE_IP__ counter drop" }
+    { "type": "ssh", "command": "sudo nft add rule inet filter input ip saddr __SOURCE_IP__ counter drop" }
   ],
   "agent": "ng-soar--cacao-executor",
-  "targets": ["lab-firewall"]
+  "targets": ["lab-target"]
 }
 ```
 

@@ -24,17 +24,17 @@
     },
     "action--block-ip": {
       "type": "action",
-      "name": "Block source IP on the Lab Firewall (nftables)",
-      "description": "Drop all forwarded traffic whose source address is the malicious IP.",
+      "name": "Block source IP on the Lab Target Service (nftables input)",
+      "description": "Drop all inbound traffic to the target whose source address is the malicious IP.",
       "on_completion": "end--01",
       "commands": [
         {
           "type": "ssh",
-          "command": "sudo nft add rule inet filter forward ip saddr __SOURCE_IP__ counter drop"
+          "command": "sudo nft add rule inet filter input ip saddr __SOURCE_IP__ counter drop"
         }
       ],
       "agent": "ng-soar--cacao-executor",
-      "targets": ["lab-firewall"]
+      "targets": ["lab-target"]
     },
     "end--01": {
       "type": "end"

@@ -8,7 +8,7 @@ Target Service.
 ```
 Malicious source IP : 10.10.10.10   (attacker)
 Protected service   : http://10.10.20.10:80   (lab-target)
-Enforcement point   : Lab Firewall (nftables)  managed by NG-SOAR
+Enforcement point   : Lab Target Service (nftables input)  managed by NG-SOAR
 ```
 
 NG-SOC has attached the observed detection evidence at
@@ -17,8 +17,9 @@ IP (sensitive-file probing such as `GET /admin` and `GET /.env`, plus an SSH
 port-22 scan). Review it to understand what the attacker is after.
 
 ## Your task
-Author a **CACAO 2.0 playbook** that blocks the malicious source IP on the Lab
-Firewall, then have **NG-SOAR validate and execute** it.
+Author a **CACAO 2.0 playbook** that blocks the malicious source IP with an
+nftables **input** drop rule on the **Lab Target Service**, then have **NG-SOAR
+validate and execute** it.
 
 1. Start from the template: `~/cacao/template_block_ip.json` (UML step 5).
 2. Read the schema hints (`~/cacao/schema_hints.md`) and the supported firewall
@@ -39,4 +40,5 @@ cacao-client summary                               # UML step 16
 ## Success criteria
 - NG-SOAR returns `approved: true` for your playbook.
 - After execution, the verification probe from the attacker host reports
-  `blocked: true` and the firewall ruleset shows your drop rule.
+  `blocked` and the target's ruleset (`firewall_evidence`) shows your drop rule
+  with the comment `cacao-block-10.10.10.10`.
