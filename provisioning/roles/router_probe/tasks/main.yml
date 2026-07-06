@@ -2,99 +2,136 @@
 # =============================================================================
 # role: router_probe   (DIAGNOSTIC ONLY - no enforcement/topology/JSON changes)
 # Decides the open question: do the platform routers (.1) route between the
-# sandbox networks?  It TEMPORARILY removes the forced ".254" inter-network
-# routes so traffic falls back to the DEFAULT (.1 router), measures reachability,
-# and then RESTORES the ".254" routes exactly (rollback in `always`).
+# sandbox networks?
 #
-# Read in the next deploy log (per-host "router-probe summary"):
-#   - attacker/ng-soar curl target = 200  AND target sees packets  -> routers
-#     interconnect the nets (a host-based block on the target would suffice).
-#   - still 000 / no packets                                        -> nets are
-#     truly isolated (a topology change is required).
+# The forced ".254" inter-network routes are re-applied by a PERSISTENT systemd
+# oneshot (soar-lab-routes.service from lab_routing), so a plain `ip route del`
+# is not enough. This role:
+#   1) stops + disables soar-lab-routes.service,
+#   2) deletes the ".254" routes,
+#   3) VERIFIES the next-hop is now the router ".1" (not ".254") BEFORE measuring,
+#   4) measures attacker/ng-soar -> target over the router path (+ target-side
+#      packet capture),
+#   5) ALWAYS restores: re-enable + start the service AND ip route replace the
+#      ".254" routes, leaving the state identical to the start.
 #
-# Guarded by run_router_probe (default true). Idempotent and self-restoring.
+# Guarded by run_router_probe (default true). Self-restoring; non-fatal.
 # =============================================================================
 
-- name: Router-path probe (temporarily use the .1 default route, then restore)
+- name: Router-path probe (disable .254 pin, verify .1 next-hop, measure, restore)
   when: run_router_probe | default(true) | bool
   block:
 
-    # --- ATTACKER: does attacker -> target work via the .1 router? -----------
-    - name: "[attacker] probe attacker->target via the default (.1) router"
+    # ---------------------------------------------------------------- ATTACKER
+    - name: "[attacker] test attacker->target via the .1 router"
       when: inventory_hostname == 'attacker'
       block:
-        - name: Save the current forced route to target-net
-          ansible.builtin.command: "ip route show {{ target_net_cidr }}"
-          register: atk_saved
-          changed_when: false
-
-        - name: Remove the .254 route so the default (.1) router is used
-          ansible.builtin.command: "ip route del {{ target_net_cidr }}"
-          changed_when: true
+        - name: "[attacker] stop + disable the persistent .254 route service"
+          ansible.builtin.systemd:
+            name: soar-lab-routes.service
+            state: stopped
+            enabled: false
           failed_when: false
 
-        - name: Probe attacker -> target (route + curl)
-          ansible.builtin.shell: >
-            echo "route get:"; ip route get {{ target_service_ip }};
-            echo "curl:"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/
-          register: atk_probe
-          changed_when: false
-          failed_when: false
-      always:
-        - name: Restore the .254 route on attacker
-          ansible.builtin.command: "ip route replace {{ target_net_cidr }} via {{ fw_attacker_ip }}"
-          changed_when: true
-          failed_when: false
-
-    # --- NG-SOAR: does soar-net -> lab-nets work via the .1 router? ----------
-    - name: "[ng-soar] probe soar->lab via the default (.1) router"
-      when: inventory_hostname == 'ng-soar'
-      block:
-        - name: Save the current forced routes to the lab nets
-          ansible.builtin.command: "ip route show {{ item }}"
-          loop:
-            - "{{ attacker_net_cidr }}"
-            - "{{ target_net_cidr }}"
-          register: soar_saved
-          changed_when: false
-
-        - name: Remove the .254 routes so the default (.1) router is used
+        - name: "[attacker] delete the forced .254 routes"
           ansible.builtin.command: "ip route del {{ item }}"
           loop:
-            - "{{ attacker_net_cidr }}"
             - "{{ target_net_cidr }}"
+            - "{{ soar_net_cidr }}"
           changed_when: true
           failed_when: false
 
-        - name: Probe ng-soar -> target/attacker (route + curl)
+        - name: "[attacker] read next-hop to target (must be the .1 router now)"
+          ansible.builtin.command: "ip route get {{ target_service_ip }}"
+          register: atk_nh
+          changed_when: false
+          failed_when: false
+
+        - name: "[attacker] probe attacker->target over the router path"
           ansible.builtin.shell: >
-            echo "route get target:"; ip route get {{ target_service_ip }};
-            echo "route get attacker:"; ip route get {{ malicious_source_ip }};
-            echo "curl target:"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/
-          register: soar_probe
+            curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/
+          register: atk_curl
           changed_when: false
           failed_when: false
       always:
-        - name: Restore the .254 routes on ng-soar
-          ansible.builtin.command: "ip route replace {{ item }} via {{ fw_soar_ip }}"
+        - name: "[attacker] RESTORE the .254 routes"
+          ansible.builtin.command: "ip route replace {{ item }} via {{ fw_attacker_ip }}"
           loop:
-            - "{{ attacker_net_cidr }}"
             - "{{ target_net_cidr }}"
+            - "{{ soar_net_cidr }}"
+          changed_when: true
+          failed_when: false
+        - name: "[attacker] RESTORE the persistent .254 route service"
+          ansible.builtin.systemd:
+            name: soar-lab-routes.service
+            state: started
+            enabled: true
+          failed_when: false
+
+    # ----------------------------------------------------------------- NG-SOAR
+    - name: "[ng-soar] test soar->target via the .1 router"
+      when: inventory_hostname == 'ng-soar'
+      block:
+        - name: "[ng-soar] stop + disable the persistent .254 route service"
+          ansible.builtin.systemd:
+            name: soar-lab-routes.service
+            state: stopped
+            enabled: false
+          failed_when: false
+
+        - name: "[ng-soar] delete the forced .254 routes"
+          ansible.builtin.command: "ip route del {{ item }}"
+          loop:
+            - "{{ target_net_cidr }}"
+            - "{{ attacker_net_cidr }}"
           changed_when: true
           failed_when: false
 
-    # --- TARGET: did any attacker traffic actually arrive? (informational) ---
-    - name: "[lab-target] count nginx hits from the malicious IP"
-      ansible.builtin.shell: "grep -c '{{ malicious_source_ip }}' /var/log/nginx/access.log 2>/dev/null || echo 0"
-      register: tgt_hits
+        - name: "[ng-soar] read next-hop to target (must be the .1 router now)"
+          ansible.builtin.command: "ip route get {{ target_service_ip }}"
+          register: soar_nh
+          changed_when: false
+          failed_when: false
+
+        - name: "[ng-soar] probe soar->target over the router path"
+          ansible.builtin.shell: >
+            curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/
+          register: soar_curl
+          changed_when: false
+          failed_when: false
+      always:
+        - name: "[ng-soar] RESTORE the .254 routes"
+          ansible.builtin.command: "ip route replace {{ item }} via {{ fw_soar_ip }}"
+          loop:
+            - "{{ target_net_cidr }}"
+            - "{{ attacker_net_cidr }}"
+          changed_when: true
+          failed_when: false
+        - name: "[ng-soar] RESTORE the persistent .254 route service"
+          ansible.builtin.systemd:
+            name: soar-lab-routes.service
+            state: started
+            enabled: true
+          failed_when: false
+
+    # ------------------------------------------------------------- LAB-TARGET
+    - name: "[lab-target] count attacker packets arriving during the probe window"
+      ansible.builtin.shell: >
+        timeout 6 tcpdump -ni any "src host {{ malicious_source_ip }}" -c 20 2>/dev/null | wc -l
+      register: tgt_pkts
       when: inventory_hostname == 'lab-target'
       changed_when: false
       failed_when: false
 
+    # ------------------------------------------------------------------ REPORT
     - name: Router-probe summary
       ansible.builtin.debug:
         msg:
           - "host={{ inventory_hostname }}"
-          - "attacker-probe: {{ atk_probe.stdout_lines | default('(n/a)') }}"
-          - "ngsoar-probe: {{ soar_probe.stdout_lines | default('(n/a)') }}"
-          - "target-nginx-hits-from-{{ malicious_source_ip }}: {{ tgt_hits.stdout | default('(n/a)') }}"
+          - "attacker next-hop: {{ atk_nh.stdout | default('(n/a)') }}"
+          - "attacker->target http_code: {{ atk_curl.stdout | default('(n/a)') }}"
+          - "attacker still-via-254?: {{ ('10.10.10.254' in (atk_nh.stdout | default(''))) }}"
+          - "ng-soar next-hop: {{ soar_nh.stdout | default('(n/a)') }}"
+          - "ng-soar->target http_code: {{ soar_curl.stdout | default('(n/a)') }}"
+          - "ng-soar still-via-254?: {{ ('10.10.30.254' in (soar_nh.stdout | default(''))) }}"
+          - "target packets seen from {{ malicious_source_ip }}: {{ tgt_pkts.stdout | default('(n/a)') }}"
