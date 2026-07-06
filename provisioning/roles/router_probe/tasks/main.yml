@@ -1,0 +1,100 @@
+---
+# =============================================================================
+# role: router_probe   (DIAGNOSTIC ONLY - no enforcement/topology/JSON changes)
+# Decides the open question: do the platform routers (.1) route between the
+# sandbox networks?  It TEMPORARILY removes the forced ".254" inter-network
+# routes so traffic falls back to the DEFAULT (.1 router), measures reachability,
+# and then RESTORES the ".254" routes exactly (rollback in `always`).
+#
+# Read in the next deploy log (per-host "router-probe summary"):
+#   - attacker/ng-soar curl target = 200  AND target sees packets  -> routers
+#     interconnect the nets (a host-based block on the target would suffice).
+#   - still 000 / no packets                                        -> nets are
+#     truly isolated (a topology change is required).
+#
+# Guarded by run_router_probe (default true). Idempotent and self-restoring.
+# =============================================================================
+
+- name: Router-path probe (temporarily use the .1 default route, then restore)
+  when: run_router_probe | default(true) | bool
+  block:
+
+    # --- ATTACKER: does attacker -> target work via the .1 router? -----------
+    - name: "[attacker] probe attacker->target via the default (.1) router"
+      when: inventory_hostname == 'attacker'
+      block:
+        - name: Save the current forced route to target-net
+          ansible.builtin.command: "ip route show {{ target_net_cidr }}"
+          register: atk_saved
+          changed_when: false
+
+        - name: Remove the .254 route so the default (.1) router is used
+          ansible.builtin.command: "ip route del {{ target_net_cidr }}"
+          changed_when: true
+          failed_when: false
+
+        - name: Probe attacker -> target (route + curl)
+          ansible.builtin.shell: >
+            echo "route get:"; ip route get {{ target_service_ip }};
+            echo "curl:"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/
+          register: atk_probe
+          changed_when: false
+          failed_when: false
+      always:
+        - name: Restore the .254 route on attacker
+          ansible.builtin.command: "ip route replace {{ target_net_cidr }} via {{ fw_attacker_ip }}"
+          changed_when: true
+          failed_when: false
+
+    # --- NG-SOAR: does soar-net -> lab-nets work via the .1 router? ----------
+    - name: "[ng-soar] probe soar->lab via the default (.1) router"
+      when: inventory_hostname == 'ng-soar'
+      block:
+        - name: Save the current forced routes to the lab nets
+          ansible.builtin.command: "ip route show {{ item }}"
+          loop:
+            - "{{ attacker_net_cidr }}"
+            - "{{ target_net_cidr }}"
+          register: soar_saved
+          changed_when: false
+
+        - name: Remove the .254 routes so the default (.1) router is used
+          ansible.builtin.command: "ip route del {{ item }}"
+          loop:
+            - "{{ attacker_net_cidr }}"
+            - "{{ target_net_cidr }}"
+          changed_when: true
+          failed_when: false
+
+        - name: Probe ng-soar -> target/attacker (route + curl)
+          ansible.builtin.shell: >
+            echo "route get target:"; ip route get {{ target_service_ip }};
+            echo "route get attacker:"; ip route get {{ malicious_source_ip }};
+            echo "curl target:"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 6 http://{{ target_service_ip }}/
+          register: soar_probe
+          changed_when: false
+          failed_when: false
+      always:
+        - name: Restore the .254 routes on ng-soar
+          ansible.builtin.command: "ip route replace {{ item }} via {{ fw_soar_ip }}"
+          loop:
+            - "{{ attacker_net_cidr }}"
+            - "{{ target_net_cidr }}"
+          changed_when: true
+          failed_when: false
+
+    # --- TARGET: did any attacker traffic actually arrive? (informational) ---
+    - name: "[lab-target] count nginx hits from the malicious IP"
+      ansible.builtin.shell: "grep -c '{{ malicious_source_ip }}' /var/log/nginx/access.log 2>/dev/null || echo 0"
+      register: tgt_hits
+      when: inventory_hostname == 'lab-target'
+      changed_when: false
+      failed_when: false
+
+    - name: Router-probe summary
+      ansible.builtin.debug:
+        msg:
+          - "host={{ inventory_hostname }}"
+          - "attacker-probe: {{ atk_probe.stdout_lines | default('(n/a)') }}"
+          - "ngsoar-probe: {{ soar_probe.stdout_lines | default('(n/a)') }}"
+          - "target-nginx-hits-from-{{ malicious_source_ip }}: {{ tgt_hits.stdout | default('(n/a)') }}"

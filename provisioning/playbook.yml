@@ -109,6 +109,17 @@
   roles:
     - net_diag
 
+# --- Router-path probe (diagnostic, self-restoring) - do the .1 routers bridge?
+- name: Probe whether the platform routers (.1) interconnect the sandbox nets
+  hosts:
+    - attacker
+    - ng-soar
+    - lab-target
+  become: true
+  gather_facts: true
+  roles:
+    - router_probe
+
 # --- LAST: deploy-time end-to-end self-test of the block path (with rollback)
 - name: Scenario self-test on NG-SOAR (asserts the runtime block path)
   hosts: ng-soar
