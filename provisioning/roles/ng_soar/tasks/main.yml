@@ -65,12 +65,25 @@
     dest: /opt/ng-soar-cacao/docker-compose.yml
     mode: "0644"
 
-- name: Build and start the CACAO Validator/Executor
+- name: Check whether the CACAO executor image already exists
+  community.docker.docker_image_info:
+    name: ng-soar/cacao-validator-executor:training
+  register: cacao_img
+
+- name: Build the CACAO executor image (only when missing, to avoid an OOM peak)
   community.docker.docker_compose_v2:
     project_src: /opt/ng-soar-cacao
     build: always
     state: present
   register: cacao_compose
+  when: cacao_img.images | length == 0
+
+- name: Ensure the CACAO Validator/Executor is up (reuse the existing image)
+  community.docker.docker_compose_v2:
+    project_src: /opt/ng-soar-cacao
+    build: never
+    state: present
+  register: cacao_up
 
 - name: Wait for the CACAO Validator/Executor API to be ready
   ansible.builtin.uri:
