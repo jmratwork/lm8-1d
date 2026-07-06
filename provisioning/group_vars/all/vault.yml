@@ -32,9 +32,8 @@ ubuntu_password_hash: "$y$j9T$r1LaddN0V6MPqFmZl5U7C/$4xbYJL5zi/YFU85SL/gXz5UXs3J
 # debian on Kali (reference sets it from the literal 'qwerty!23')
 kali_debian_password_plain: "qwerty!23"
 
-# --- NG-SOAR executor SSH management of the lab-firewall ---------------------
-# Generated at provisioning time by the ng_soar role (no embedded private key).
-# Fallback authorized key if the ng-soar host fact is unavailable:
+# --- NG-SOAR executor SSH management (lab-target + attacker) -----------------
+# The executor keypair is generated at provisioning time by the ng_soar role
+# (no embedded private key). Fallback authorized key if the ng-soar host fact is
+# unavailable:
 soar_fw_authorized_key: "ssh-ed25519 AAAA_CHANGEME soar-fw-executor"
-# Firewall management user: key-based auth only by default.
-fw_mgmt_user_password_hash: "!"

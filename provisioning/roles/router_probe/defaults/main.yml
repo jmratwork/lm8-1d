@@ -1,3 +1,0 @@
----
-# Toggle the (non-fatal, self-restoring) router-path probe. Default on.
-run_router_probe: true

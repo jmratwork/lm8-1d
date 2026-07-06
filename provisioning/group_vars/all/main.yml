@@ -1,25 +1,13 @@
 ---
 # =============================================================================
 # Shared scenario facts (non-secret) available to every play.
-# Addressing: routers own ".1" (gateway), firewall owns ".254" on each net.
+# Flat single-network design: host-based enforcement on lab-target.
 # =============================================================================
 
-# Network layout (mirrors /topology.yml)
-soar_net_cidr: "10.10.30.0/24"
-attacker_net_cidr: "10.10.10.0/24"
-target_net_cidr: "10.10.20.0/24"
+# Single flat network (mirrors /topology.yml)
+lab_net_cidr: "10.10.0.0/16"
 
-# Firewall enforcement interface IPs (lab-firewall is on all three nets, .254)
-fw_soar_ip: "10.10.30.254"
-fw_attacker_ip: "10.10.10.254"
-fw_target_ip: "10.10.20.254"
-
-# Per-network gateways (routers)
-soar_gw: "10.10.30.1"
-attacker_gw: "10.10.10.1"
-target_gw: "10.10.20.1"
-
-# Key actors
+# Key actors (IPs unchanged from the training docs)
 ng_soar_ip: "10.10.30.10"
 student_ws_ip: "10.10.30.20"
 evaluation_ip: "10.10.30.30"
@@ -27,10 +15,11 @@ evaluation_ip: "10.10.30.30"
 # The malicious test source IP (attacker) the CACAO playbook must block.
 malicious_source_ip: "10.10.10.10"
 
-# The protected service.
+# The protected service AND the host-based enforcement point (nftables input).
 target_service_ip: "10.10.20.10"
 target_service_http_port: 80
 target_service_ssh_port: 22
 
-# Management account NG-SOAR uses to SSH into the lab-firewall to apply rules.
-fw_mgmt_user: "soar-fw"
+# Management account the NG-SOAR executor uses to SSH into lab-target (apply the
+# block) and into the attacker (drive the verification probe).
+mgmt_user: "soar-fw"

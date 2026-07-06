@@ -3,12 +3,9 @@
 # CyberRangeCZ Sandbox Provisioning - master playbook
 # PUC2 (CYNET) - Sub Case 2d: CACAO Playbook Authoring Training
 # -----------------------------------------------------------------------------
-# Reference (structure, hostname targeting, sandbox-logging pass):
-#   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations
-#   https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-provisioning/
-#
-# Plays target hosts by NAME (topology `groups: []`), and the final pass uses
-# the platform auto-groups `hosts` and `routers` for command logging.
+# Flat single-network design: the CACAO block is enforced HOST-BASED on
+# lab-target (nftables input), applied/verified directly by the NG-SOAR executor
+# over the flat network. No firewall-in-path, no inter-network routing.
 # =============================================================================
 
 # --- Baseline on every Linux host ------------------------------------------
@@ -28,16 +25,8 @@
     - docker_server      # Docker + NG-SOAR via docker-compose (integrations pattern)
     - ng_soar            # KMS content + CACAO validator/executor + toolkit/hints
 
-# --- Lab Firewall : nftables gateway between attacker and target -----------
-- name: Configure the Lab Firewall (nftables, forwarding, remote management)
-  hosts: lab-firewall
-  become: true
-  gather_facts: true
-  roles:
-    - lab_firewall
-
-# --- Lab Target Service ----------------------------------------------------
-- name: Configure the Lab Target Service (web/ssh + logging)
+# --- Lab Target Service : protected service + host-based enforcement point --
+- name: Configure the Lab Target Service (web/ssh, nftables input, mgmt access)
   hosts: lab-target
   become: true
   gather_facts: true
@@ -45,7 +34,7 @@
     - lab_target
 
 # --- Attacker : suspicious-traffic generator (malicious test IP) -----------
-- name: Configure the Attacker host (traffic generator)
+- name: Configure the Attacker host (traffic generator + verification access)
   hosts: attacker
   become: true
   gather_facts: true
@@ -68,19 +57,6 @@
   roles:
     - evaluation_reporting
 
-# --- Symmetric lab routing (soar-net <-> lab-nets via the firewall) ---------
-- name: Install symmetric static routes through the Lab Firewall
-  hosts:
-    - student-ws
-    - ng-soar
-    - evaluation-reporting
-    - attacker
-    - lab-target
-  become: true
-  gather_facts: true
-  roles:
-    - lab_routing
-
 # --- Cross-cutting config on all systems (Kali rsyslog fix + logging) ------
 - name: Configure all systems (command logging, host fixes)
   hosts: all
@@ -97,31 +73,8 @@
   roles:
     - man
 
-# --- Network diagnostics (non-fatal) - decides Variant A vs B (enforcement path)
-- name: Network diagnostics on firewall and lab/ops hosts
-  hosts:
-    - lab-firewall
-    - ng-soar
-    - attacker
-    - lab-target
-  become: true
-  gather_facts: true
-  roles:
-    - net_diag
-
-# --- Router-path probe (diagnostic, self-restoring) - do the .1 routers bridge?
-- name: Probe whether the platform routers (.1) interconnect the sandbox nets
-  hosts:
-    - attacker
-    - ng-soar
-    - lab-target
-  become: true
-  gather_facts: true
-  roles:
-    - router_probe
-
 # --- LAST: deploy-time end-to-end self-test of the block path (with rollback)
-- name: Scenario self-test on NG-SOAR (asserts the runtime block path)
+- name: Scenario self-test on NG-SOAR (asserts the host-based block path)
   hosts: ng-soar
   become: true
   gather_facts: false
