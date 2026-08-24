@@ -80,3 +80,21 @@
   gather_facts: false
   roles:
     - scenario_selftest
+
+
+# --- Change man syslog-ng and adding Command Logging
+- name: Changing syslog-ng on man
+  hosts: man
+  become: yes
+  roles:
+    - man
+
+- name: set up command logging
+  hosts: 
+    - routers
+    - hosts
+  roles:
+    - role: sandbox-logging
+      become: yes
+      slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
+      when: ansible_system == "Linux"
