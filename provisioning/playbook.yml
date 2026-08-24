@@ -65,6 +65,14 @@
   roles:
     - all
 
+# --- LAST: deploy-time end-to-end self-test of the block path (with rollback)
+- name: Scenario self-test on NG-SOAR (asserts the host-based block path)
+  hosts: ng-soar
+  become: true
+  gather_facts: false
+  roles:
+    - scenario_selftest
+
 # --- Management node: syslog-ng forwarding (mirrors reference `man`) --------
 - name: Configure syslog-ng forwarding on the management node
   hosts: man
@@ -73,10 +81,13 @@
   roles:
     - man
 
-# --- LAST: deploy-time end-to-end self-test of the block path (with rollback)
-- name: Scenario self-test on NG-SOAR (asserts the host-based block path)
-  hosts: ng-soar
-  become: true
-  gather_facts: false
+# --- Change man syslog-ng and adding Command Logging
+- name: set up command logging
+  hosts: 
+    - routers
+    - hosts
   roles:
-    - scenario_selftest
+    - role: sandbox-logging
+      become: yes
+      slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
+      when: ansible_system == "Linux"
