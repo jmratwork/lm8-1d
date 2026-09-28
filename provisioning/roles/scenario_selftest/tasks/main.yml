@@ -5,7 +5,9 @@
 # LAST provisioning step. Turns the runtime risk into a VISIBLE failure.
 #
 #   Student      : create (UML 4) -> submit (6-10) -> execute is refused (403)
-#   NG-SOAR Op.  : queue (10) -> execute (11) -> block on lab-target (12) +
+#   NG-SOAR Op.  : console prerequisites (password set, CLI works as
+#                  soar-operator, student cannot read the token) ->
+#                  queue (10) -> execute (11) -> block on lab-target (12) +
 #                  probe from the attacker BLOCKED (13)
 #   Student      : execution report (14)
 #   Cyber Range  : cr-compile on student-ws (15) -> Evaluation summary PASS (16)
@@ -152,6 +154,42 @@
         fail_msg: >-
           SELFTEST: KMS flow broken. create={{ st_create.json | default('?') }}
           submit={{ st_submit.json | default('?') }}
+
+    # --- Level 27 prerequisites: what the trainee needs in the ng-soar console.
+    # (The console password login itself cannot be driven from Ansible.)
+    - name: "Level 27 - soar-operator has a usable password (passwd -S = P)"
+      ansible.builtin.command:
+        cmd: "passwd -S {{ soar_operator_user }}"
+      register: st_op_passwd
+      changed_when: false
+
+    - name: "Level 27 - the operator console works with soar-operator's own permissions"
+      ansible.builtin.command:
+        cmd: "runuser -u {{ soar_operator_user }} -- /usr/local/bin/soar-operator queue"
+      register: st_op_cli
+      changed_when: false
+      failed_when: false
+
+    - name: "Level 26/27 - the Student account cannot read the operator token"
+      ansible.builtin.command:
+        cmd: "runuser -u ubuntu -- test -r /etc/ng-soar/operator.token"
+      register: st_student_token
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the NG-SOAR Operator console is ready for the trainee
+      ansible.builtin.assert:
+        that:
+          - st_op_passwd.stdout.split()[1] == "P"
+          - st_op_cli.rc == 0
+          - selftest_id in st_op_cli.stdout
+          - st_student_token.rc != 0
+        fail_msg: >-
+          SELFTEST: NG-SOAR Operator console not ready.
+          passwd -S={{ st_op_passwd.stdout | default('?') }} ;
+          'soar-operator queue' as {{ soar_operator_user }} rc={{ st_op_cli.rc | default('?') }}
+          stderr={{ st_op_cli.stderr | default('') }} ;
+          student can read token={{ st_student_token.rc | default('?') == 0 }}.
 
     - name: Pre-clean lab-target to its base ruleset (idempotent baseline)
       ansible.builtin.command:

@@ -272,3 +272,16 @@ rewritten, and `soar-operator execute` no longer needs a UUID typed by hand when
 single playbook is queued. SSH remains only as NG-SOAR's own key-based automation
 towards lab-target and the attacker (UML 12-13), which is not user access.
 To check by hand: console login of `soar-operator` on `ng-soar` (level 27).
+
+## 12. Second V3 deploy (2026-09-28) and operator-console check
+
+Second deploy after the console-access fix: `failed=0 unreachable=0 rescued=0` on
+every node, no collections warning, no sshd tasks (ng-soar `ok=88`), `SELFTEST OK`,
+rollback complete. The log could not show whether the trainee can act as NG-SOAR
+Operator in the `ng-soar` console, so the self-test now also asserts:
+- `passwd -S soar-operator` reports `P` (a usable password is set);
+- `runuser -u soar-operator -- soar-operator queue` succeeds and lists the queued
+  self-test playbook (group permission on the token + CLI);
+- the `ubuntu` (Student-equivalent) account cannot read `/etc/ng-soar/operator.token`.
+The interactive console password login itself still needs a manual check.
+
