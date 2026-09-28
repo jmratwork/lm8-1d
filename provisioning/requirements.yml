@@ -7,12 +7,3 @@ roles:
     src: https://github.com/cyberrangecz/ansible-role-sandbox-logging.git
     scm: git
     version: v1.0.0
-
-# Collections used by the provisioning roles.
-collections:
-  - name: community.docker
-    version: ">=3.4.0"
-  - name: community.crypto
-    version: ">=2.10.0"
-  - name: ansible.posix
-    version: ">=1.5.0"

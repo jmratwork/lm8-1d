@@ -25,7 +25,8 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
 ├── VALIDATION.md                     # Validation report
 └── provisioning/
     ├── playbook.yml                  # Orchestrates roles (hostname targeting)
-    ├── requirements.yml              # sandbox-logging role + collections
+    ├── requirements.yml              # sandbox-logging role (installed by the platform)
+    ├── requirements-collections.yml  # collections, local runs only
     ├── group_vars/all/
     │   ├── main.yml                  # Shared scenario facts (non-secret)
     │   └── vault.yml                 # Secrets (encrypt with ansible-vault)
@@ -134,7 +135,7 @@ and the `man` role configures syslog-ng forwarding — mirroring the reference.
 # On a Linux management host:
 cd provisioning
 ansible-galaxy install -r requirements.yml           # roles
-ansible-galaxy collection install -r requirements.yml # collections
+ansible-galaxy collection install -r requirements-collections.yml # collections (local only)
 ansible-playbook --syntax-check playbook.yml
 ```
 

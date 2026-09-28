@@ -73,7 +73,7 @@ Aligned with the reference sandbox
 > ```sh
 > cd provisioning
 > ansible-galaxy install -r requirements.yml
-> ansible-galaxy collection install -r requirements.yml
+> ansible-galaxy collection install -r requirements-collections.yml
 > ansible-playbook --syntax-check playbook.yml
 > ```
 
@@ -251,3 +251,17 @@ and 3 after; summary includes `compiled_artifacts`, `validation_attempts` and
 `executed_by`. The SSH block itself (`success`/`BLOCKED`/`PASS`) can only be checked
 on a deployed sandbox: the self-test asserts it there.
 
+
+## 11. First V3 deploy on CyberRangeCZ (2026-09-28)
+
+PLAY RECAP `failed=0 unreachable=0` on every node; `SELFTEST OK` (create=draft,
+submit=ready-for-execution, student execute=403, operator execute=success with
+`counter packets 12 ... drop comment "cacao-block-10.10.10.10"`, cr-compile=3
+artifacts, summary=PASS) and rollback completed. Follow-ups applied:
+- collections moved to `requirements-collections.yml`: the platform installs only
+  roles from `requirements.yml` and warned about the collections (its runner
+  already ships them);
+- the Kali libfastjson patch in the `all` role is kept on purpose (documented);
+- deploy logs (`log.txt`, `*.log`) are git-ignored.
+Not covered by the log: the `soar-operator` SSH password login (training level
+27), which must be checked by hand.

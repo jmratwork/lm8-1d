@@ -9,6 +9,9 @@
 # --- Kali rsyslog fix -------------------------------------------------------
 # libfastjson4 on Kali is compiled without -lm; the IFUNC resolver for modf()
 # needs libm in DT_NEEDED or rsyslogd segfaults before reading its config.
+# Kept on purpose although command logging currently skips Kali (see the
+# "set up command logging" play): harmless, and required again as soon as
+# logging is re-enabled on the attacker.
 - name: Install patchelf on Kali
   ansible.builtin.apt:
     name: patchelf

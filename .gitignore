@@ -11,3 +11,7 @@ provisioning/collections/
 .idea/
 *.swp
 .DS_Store
+
+# Deploy logs (contain internal infrastructure IPs)
+log.txt
+*.log
