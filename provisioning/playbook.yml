@@ -57,8 +57,8 @@
   roles:
     - evaluation_reporting
 
-# --- Cross-cutting config on all systems (Kali rsyslog fix + logging) ------
-- name: Configure all systems (command logging, host fixes)
+# --- Cross-cutting config on all systems (Kali rsyslog fix) ---------------
+- name: Configure all systems (host fixes)
   hosts: all
   become: true
   gather_facts: true

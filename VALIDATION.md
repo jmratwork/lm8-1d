@@ -15,7 +15,7 @@ Aligned with the reference sandbox
 | Evaluation/Reporting | host `evaluation-reporting` (ingest+summary) | `evaluation_reporting` |
 | Malicious test IP | host `attacker` (10.10.10.10) | `attacker` |
 | Cyber Range trainee console | host `student-ws` (brief, toolkit, `cacao-client`, `cr-compile`) | `student_ws` |
-| Command logging (platform) | `sandbox-logging` role + `man` syslog-ng | `all`, `man`, `requirements.yml` |
+| Command logging (platform) | `sandbox-logging` role + `man` syslog-ng | "set up command logging" play, `man`, `requirements.yml` |
 
 ## 2. Alignment with the real infrastructure (integrations)
 
@@ -27,7 +27,7 @@ Aligned with the reference sandbox
 | Router image/flavor | `debian-12-x86_64` / `standard.small` | idem | ✔ aligned |
 | NG-SOAR deploy | SMB → `/opt/NG-SOAR/docker-compose.yml` → `docker_compose_v2 build:always` | same, secrets via vault + bundled fallback | ✔ aligned |
 | Docker Hub login | inline creds | `vault.yml` (same values) | ✔ aligned, externalised |
-| Command logging | `sandbox-logging` v1.0.0 + `man` syslog-ng | `requirements.yml` + `all` + `man` roles | ✔ aligned |
+| Command logging | `sandbox-logging` v1.0.0 + `man` syslog-ng | `requirements.yml` + logging play + `man` role | ✔ aligned |
 | Secrets | inline plaintext | centralised in `vault.yml` (+ encrypt note) | ✔ aligned, hardened |
 
 ## 3. NG-SOAR (CACAO validation + execution) verified
@@ -113,7 +113,8 @@ To keep every training level non-blocking on the deployed sandbox:
 `when: ansible_distribution == 'Kali'` and with **no disable toggle**. Its
 `metasploit-patch.yml` runs `find / -regex '.*metasploit.*shell.rb'`, which races
 `/proc` and returns a non-zero rc, failing the deploy on the only Kali host
-(`attacker`). **Decision: skip `sandbox-logging` on Kali hosts** (`all` role
+(`attacker`). **Decision: skip `sandbox-logging` on Kali hosts** (now in the
+"set up command logging" play of `playbook.yml`; previously the `all` role:
 `when: ansible_distribution != 'Kali'`). Rationale: this scenario does not use
 metasploit (the attacker generates traffic with curl/nc), and the attacker is an
 automated host with no trainee-driven shell to log; all non-Kali hosts keep full

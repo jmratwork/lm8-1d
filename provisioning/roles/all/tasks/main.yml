@@ -2,8 +2,7 @@
 # =============================================================================
 # role: all
 # Cross-cutting configuration applied to every system, mirroring the reference
-# `integrations` `all` role: the Kali rsyslog/libfastjson fix and the
-# CyberRangeCZ command-logging pass.
+# `integrations` `all` role: the Kali rsyslog/libfastjson fix.
 #   https://github.com/NG-SOC-eu/ng-soc-ansible/tree/integrations
 # =============================================================================
 
@@ -29,20 +28,5 @@
   changed_when: "'patched' in fastjson_patch.stdout"
   when: ansible_distribution == "Kali"
 
-# --- CyberRangeCZ command logging -------------------------------------------
-# NOTE: sandbox-logging (v1.0.0) includes the `sandbox-logging-msf` sub-role
-# guarded by `when: ansible_distribution == 'Kali'`, and that sub-role has no
-# toggle. Its metasploit-patch.yml runs `find / -regex '.*metasploit.*shell.rb'`,
-# which races /proc and returns rc!=0, failing the deploy on the only Kali host
-# (attacker). This scenario does NOT use metasploit (the attacker generates
-# traffic with curl/nc), so we skip command logging on Kali. Non-Kali hosts
-# keep full logging. See VALIDATION.md for the decision record.
-- name: Set up command logging
-  ansible.builtin.include_role:
-    name: sandbox-logging
-  vars:
-    slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
-  when:
-    - ansible_system == "Linux"
-    - ansible_distribution != "Kali"
-    - inventory_hostname not in ['proxy-jump', 'man']
+# Command logging (sandbox-logging) is applied by the dedicated
+# "set up command logging" play at the end of playbook.yml (Kali excluded).

@@ -119,7 +119,8 @@ production this front-ends the real NG-SOAR/SOARCA executor
 ## Command logging
 
 `requirements.yml` pulls `cyberrangecz/ansible-role-sandbox-logging@v1.0.0`. The
-`all` role applies it to every Linux `hosts`/`routers` node (with the
+last play of `playbook.yml` ("set up command logging") applies it to every Linux
+`hosts`/`routers` node except Kali (with the
 `slf_destination_port` 514/515 selection based on whether a `man` node exists),
 and the `man` role configures syslog-ng forwarding — mirroring the reference.
 
