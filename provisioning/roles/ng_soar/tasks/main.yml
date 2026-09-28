@@ -1,11 +1,13 @@
 ---
 # =============================================================================
 # role: ng_soar
-# KMS + CACAO Validator/Executor configuration (the CRITICAL component).
-# Covers UML steps 5, 7, 8, 10, 11, 12, 13, 14, 15 (server side).
+# NG-SOAR: KMS + CACAO Validator/Executor (the CRITICAL component).
+# Server side of UML steps 4, 7, 8, 10, 12, 13, 14, plus the NG-SOAR Operator
+# console (UML 10-11). The CACAO toolkit (UML 5) is delivered by the Cyber
+# Range (student_ws role), not by NG-SOAR.
 # =============================================================================
 
-- name: Create CACAO toolkit / executor directories
+- name: Create KMS / CACAO executor directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -14,9 +16,8 @@
     - /opt/ng-soar-cacao
     - /opt/ng-soar-cacao/cacao
     - /opt/ng-soar-cacao/keys
-    - /opt/ng-soar-cacao/toolkit
     - /var/log/ng-soar
-    - /opt/NG-SOAR/kms/www
+    - /var/log/ng-soar/kms
 
 - name: Deploy CACAO validator/executor application code
   ansible.builtin.copy:
@@ -27,21 +28,7 @@
     - app.py
     - Dockerfile
 
-# --- UML step 5 material : templates, schema hints, supported commands -------
-- name: Publish CACAO toolkit (templates, hints, supported firewall commands)
-  ansible.builtin.copy:
-    src: "cacao-toolkit/"
-    dest: /opt/ng-soar-cacao/toolkit/
-    mode: "0644"
-
-- name: Expose the CACAO toolkit through the KMS web root (storage/retrieval)
-  ansible.builtin.copy:
-    src: "cacao-toolkit/"
-    dest: /opt/NG-SOAR/kms/www/
-    remote_src: false
-    mode: "0644"
-
-# --- SSH key the executor uses to manage the Lab Firewall / drive verification
+# --- SSH key the executor uses to manage lab-target / drive verification ----
 - name: Generate the NG-SOAR executor SSH keypair
   community.crypto.openssh_keypair:
     path: /opt/ng-soar-cacao/keys/id_ed25519
@@ -58,7 +45,77 @@
   ansible.builtin.set_fact:
     soar_executor_pubkey: "{{ soar_pub_slurp.content | b64decode | trim }}"
 
-# --- Render and deploy the CACAO validator/executor compose project ---------
+# --- NG-SOAR Operator (UML 10-11): account, token and console ----------------
+- name: Create the NG-SOAR Operator group
+  ansible.builtin.group:
+    name: "{{ soar_operator_user }}"
+    state: present
+
+- name: Create the NG-SOAR Operator account
+  ansible.builtin.user:
+    name: "{{ soar_operator_user }}"
+    group: "{{ soar_operator_user }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Set the NG-SOAR Operator password
+  ansible.builtin.shell: |
+    set -o pipefail
+    echo '{{ soar_operator_user }}:{{ soar_operator_password }}' | chpasswd
+  args:
+    executable: /bin/bash
+  no_log: true
+  changed_when: false
+
+- name: Allow password SSH login for the NG-SOAR Operator only
+  ansible.builtin.blockinfile:
+    path: /etc/ssh/sshd_config
+    marker: "# {mark} NG-SOAR Operator password login (PUC2 2d)"
+    insertafter: EOF
+    block: |
+      Match User {{ soar_operator_user }}
+          PasswordAuthentication yes
+          KbdInteractiveAuthentication yes
+    validate: "/usr/sbin/sshd -t -f %s"
+  register: sshd_operator
+
+- name: Restart sshd when the operator login changed (noble uses socket activation)
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+  when: sshd_operator is changed
+
+- name: Create the operator token directory
+  ansible.builtin.file:
+    path: /etc/ng-soar
+    state: directory
+    owner: root
+    group: "{{ soar_operator_user }}"
+    mode: "0750"
+
+- name: Generate the operator token (once)
+  ansible.builtin.shell: |
+    set -e
+    umask 027
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /etc/ng-soar/operator.token
+  args:
+    executable: /bin/bash
+    creates: /etc/ng-soar/operator.token
+
+- name: Restrict the operator token to the NG-SOAR Operator group
+  ansible.builtin.file:
+    path: /etc/ng-soar/operator.token
+    owner: root
+    group: "{{ soar_operator_user }}"
+    mode: "0640"
+
+- name: Install the NG-SOAR Operator console
+  ansible.builtin.copy:
+    src: soar-operator.sh
+    dest: /usr/local/bin/soar-operator
+    mode: "0755"
+
+# --- Render and deploy the KMS + CACAO validator/executor compose project ----
 - name: Render CACAO executor docker-compose
   ansible.builtin.template:
     src: docker-compose.yml.j2

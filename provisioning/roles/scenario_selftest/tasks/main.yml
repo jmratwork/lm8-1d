@@ -1,15 +1,18 @@
 ---
 # =============================================================================
 # role: scenario_selftest
-# Deploy-time END-TO-END assertion of the host-based CACAO block, run on ng-soar
-# as the LAST provisioning step. Turns the runtime risk into a VISIBLE failure.
+# Deploy-time END-TO-END assertion of the 16-step flow, run on ng-soar as the
+# LAST provisioning step. Turns the runtime risk into a VISIBLE failure.
 #
-# Flat network / host-based: the executor applies the block on lab-target
-# (nftables input) and verifies by driving the attacker at the target. Readiness
-# is retried (non-mutating), /execute runs EXACTLY ONCE, and the target ruleset
-# is ALWAYS reloaded to base afterwards (no cacao-block-* rule left behind).
+#   Student      : create (UML 4) -> submit (6-10) -> execute is refused (403)
+#   NG-SOAR Op.  : queue (10) -> execute (11) -> block on lab-target (12) +
+#                  probe from the attacker BLOCKED (13)
+#   Student      : execution report (14)
+#   Cyber Range  : cr-compile on student-ws (15) -> Evaluation summary PASS (16)
 #
-# Guarded by `run_scenario_selftest` (default true). Leaves no side effects.
+# /operator/execute runs EXACTLY ONCE. ALWAYS rolls back: lab-target base
+# ruleset, the self-test KMS entry and the self-test Evaluation report, so the
+# trainee starts from a clean state. Guarded by `run_scenario_selftest`.
 # =============================================================================
 
 - name: Install the instructor smoke-test script (always)
@@ -20,7 +23,30 @@
     group: root
     mode: "0750"
 
-- name: Scenario end-to-end self-test (host-based block) with mandatory rollback
+- name: Create the instructor share for the smoke-test
+  ansible.builtin.file:
+    path: /usr/local/share/cacao-training
+    state: directory
+    mode: "0755"
+
+- name: Give the smoke-test the reference playbook and a cr-compile copy (instructor only)
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - src: "{{ playbook_dir }}/roles/student_ws/files/cacao-toolkit/sample_block_ip_playbook.json"
+      dest: /usr/local/share/cacao-training/sample_block_ip_playbook.json
+      mode: "0640"
+    - src: "{{ playbook_dir }}/roles/student_ws/files/cr-compile.sh"
+      dest: /usr/local/sbin/scenario-cr-compile
+      mode: "0750"
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Scenario end-to-end self-test with mandatory rollback
   when: run_scenario_selftest | default(true) | bool
   vars:
     selftest_executor_url: "http://127.0.0.1:9100"
@@ -28,11 +54,13 @@
     selftest_key: "/opt/ng-soar-cacao/keys/id_ed25519"
     selftest_ssh_opts: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8"
     selftest_pb: >-
-      {{ lookup('file', playbook_dir + '/roles/ng_soar/files/cacao-toolkit/sample_block_ip_playbook.json')
+      {{ lookup('file', playbook_dir + '/roles/student_ws/files/cacao-toolkit/sample_block_ip_playbook.json')
          | from_json
          | combine({'playbook_variables': {'source_ip': {'value': malicious_source_ip}}}, recursive=true) }}
+    selftest_id: "{{ selftest_pb.id }}"
+    selftest_pb_file: /tmp/scenario-selftest-playbook.json
   block:
-    - name: Wait for the CACAO Validator/Executor API
+    - name: Wait for the NG-SOAR API
       ansible.builtin.uri:
         url: "{{ selftest_executor_url }}/healthz"
         status_code: 200
@@ -71,20 +99,59 @@
           or attacker ({{ malicious_source_ip }}, rc={{ st_atk_ready.rc }}) over SSH.
           Check the soar-fw key/sudo and that all hosts share the flat lab-net.
 
-    - name: "UML 7-8 - validate the reference playbook"
+    - name: Read the NG-SOAR Operator token
+      ansible.builtin.slurp:
+        src: /etc/ng-soar/operator.token
+      register: st_token_raw
+      no_log: true
+
+    - name: Keep the operator token as a fact
+      ansible.builtin.set_fact:
+        st_token: "{{ st_token_raw.content | b64decode | trim }}"
+      no_log: true
+
+    - name: "UML 4 - Student creates the playbook in NG-SOAR (KMS)"
       ansible.builtin.uri:
-        url: "{{ selftest_executor_url }}/validate"
+        url: "{{ selftest_executor_url }}/playbooks"
         method: POST
         body_format: json
         body: "{{ selftest_pb }}"
-        return_content: true
-      register: st_validate
+      register: st_create
 
-    - name: Assert the playbook is approved
+    - name: "UML 6-10 - Student submits it; NG-SOAR approves and queues it"
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/playbooks/submit"
+        method: POST
+        body_format: json
+        body: "{{ selftest_pb }}"
+      register: st_submit
+
+    - name: "UML 11 - the Student is NOT allowed to execute (expects 403)"
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/execute"
+        method: POST
+        body_format: json
+        body: "{{ selftest_pb }}"
+        status_code: 403
+      register: st_student_exec
+
+    - name: "UML 10 - NG-SOAR Operator queue"
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/operator/queue"
+        headers:
+          X-Operator-Token: "{{ st_token }}"
+      register: st_queue
+
+    - name: Assert create / submit / queue behave as in the training
       ansible.builtin.assert:
         that:
-          - st_validate.json.approved | bool
-        fail_msg: "SELFTEST: /validate did not approve the reference playbook: {{ st_validate.json.errors | default('?') }}"
+          - st_create.json.status == "draft"
+          - st_submit.json.approved | bool
+          - st_submit.json.status == "ready-for-execution"
+          - selftest_id in (st_queue.json.ready_for_execution | map(attribute='kms_id') | list)
+        fail_msg: >-
+          SELFTEST: KMS flow broken. create={{ st_create.json | default('?') }}
+          submit={{ st_submit.json | default('?') }}
 
     - name: Pre-clean lab-target to its base ruleset (idempotent baseline)
       ansible.builtin.command:
@@ -92,56 +159,80 @@
       changed_when: true
       failed_when: false
 
-    - name: "UML 11-14 - execute the playbook EXACTLY ONCE"
+    - name: "UML 11-13 - NG-SOAR Operator executes the playbook EXACTLY ONCE"
       ansible.builtin.uri:
-        url: "{{ selftest_executor_url }}/execute"
+        url: "{{ selftest_executor_url }}/operator/execute/{{ selftest_id }}"
         method: POST
-        body_format: json
-        body: "{{ selftest_pb }}"
-        return_content: true
+        headers:
+          X-Operator-Token: "{{ st_token }}"
+        timeout: 120
       register: st_exec
+
+    - name: "UML 14 - Student retrieves the execution report"
+      ansible.builtin.uri:
+        url: "{{ selftest_executor_url }}/playbooks/{{ selftest_id }}/execution"
+      register: st_report
 
     - name: Assert the host-based block succeeded end to end
       ansible.builtin.assert:
         that:
-          - st_exec.status == 200
           - st_exec.json.status == "success"
-          - st_exec.json.verification.state == "blocked"
-          - '"BLOCKED" in st_exec.json.verification.probe_output'
-          - ('cacao-block-' ~ malicious_source_ip) in st_exec.json.firewall_evidence
+          - st_exec.json.executed_by == "ng-soar-operator"
+          - st_report.json.verification.state == "blocked"
+          - st_report.json.verification.probe_output == "BLOCKED"
+          - ('cacao-block-' ~ malicious_source_ip) in st_report.json.firewall_evidence
         fail_msg: >-
           SELFTEST: execute did not confirm the block.
           status={{ st_exec.json.status | default('?') }},
           state={{ st_exec.json.verification.state | default('?') }},
           probe={{ st_exec.json.verification.probe_output | default('?') }}.
 
+    - name: "UML 15 - stage the playbook on the Cyber Range console"
+      ansible.builtin.copy:
+        content: "{{ selftest_pb | to_nice_json }}"
+        dest: "{{ selftest_pb_file }}"
+        mode: "0644"
+      delegate_to: student-ws
+
+    - name: "UML 15 - Cyber Range compiles the results (cr-compile)"
+      ansible.builtin.command:
+        cmd: /usr/local/bin/cr-compile --now
+      environment:
+        NG_SOAR_URL: "http://{{ ng_soar_ip }}:9100"
+        EVAL_URL: "{{ selftest_eval_url }}"
+        CR_PLAYBOOK: "{{ selftest_pb_file }}"
+      delegate_to: student-ws
+      changed_when: false
+
     - name: "UML 16 - fetch the training summary and assert grade PASS"
       ansible.builtin.uri:
         url: "{{ selftest_eval_url }}/summary"
-        return_content: true
       register: st_summary
       retries: 6
       delay: 5
       until:
         - st_summary.status == 200
-        - st_summary.json.grade == "PASS"
+        - st_summary.json.grade | default('') == "PASS"
+        - st_summary.json.compiled_artifacts | default([]) | length == 3
 
     - name: Scenario self-test PASSED
       ansible.builtin.debug:
         msg: >-
-          SELFTEST OK: validate=approved, execute=success/blocked on lab-target
-          (evidence has cacao-block-{{ malicious_source_ip }}), summary=PASS.
+          SELFTEST OK: create=draft, submit=ready-for-execution, student execute=403,
+          operator execute=success/BLOCKED on lab-target
+          (evidence has cacao-block-{{ malicious_source_ip }}), cr-compile=3 artifacts,
+          summary=PASS.
 
   rescue:
     - name: Scenario self-test FAILED - surface a clear diagnosis
       ansible.builtin.fail:
         msg: >-
-          SCENARIO SELF-TEST FAILED on ng-soar: the host-based block path is broken.
-          Likely cause: the executor cannot SSH to lab-target ({{ target_service_ip }})
-          to apply the nft input rule, or to the attacker ({{ malicious_source_ip }})
-          to run the verification probe (soar-fw key / passwordless sudo nft), or the
-          hosts are not on the same flat lab-net.
-          validate={{ st_validate.json | default('n/a') }} ;
+          SCENARIO SELF-TEST FAILED on ng-soar. Failed task: {{ ansible_failed_task.name | default('?') }}.
+          Common causes: the executor cannot SSH to lab-target ({{ target_service_ip }})
+          or the attacker ({{ malicious_source_ip }}) (soar-fw key / sudo nft), the
+          operator token is missing (/etc/ng-soar/operator.token), or student-ws /
+          evaluation-reporting are unreachable on the flat lab-net.
+          submit={{ st_submit.json | default('n/a') }} ;
           execute={{ st_exec.json.status | default('n/a') }}/{{ st_exec.json.verification.state | default('n/a') }} ;
           summary={{ st_summary.json.grade | default('n/a') }}.
 
@@ -150,6 +241,25 @@
       ansible.builtin.command:
         cmd: "ssh -i {{ selftest_key }} {{ selftest_ssh_opts }} {{ mgmt_user }}@{{ target_service_ip }} 'sudo nft -f /etc/nftables.conf'"
       changed_when: true
+      failed_when: false
+
+    - name: ROLLBACK - remove the self-test playbook from the KMS
+      ansible.builtin.file:
+        path: "/var/log/ng-soar/kms/{{ selftest_id }}.json"
+        state: absent
+
+    - name: ROLLBACK - remove the self-test report from Evaluation/Reporting
+      ansible.builtin.file:
+        path: "/var/log/cacao-training/reports/report-{{ selftest_id }}.json"
+        state: absent
+      delegate_to: evaluation-reporting
+      failed_when: false
+
+    - name: ROLLBACK - remove the staged playbook from the Cyber Range console
+      ansible.builtin.file:
+        path: "{{ selftest_pb_file }}"
+        state: absent
+      delegate_to: student-ws
       failed_when: false
 
     - name: ROLLBACK - confirm no cacao-block-* rules remain on lab-target

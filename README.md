@@ -1,10 +1,16 @@
-# PUC2 (CYNET) — Sub Case 2d: CACAO Playbook Authoring Training (Firewall IP Block)
+# PUC2 (CYNET) — Sub Case 2d: CACAO Playbook Authoring Training (Malicious IP Block)
 
 A **CyberRangeCZ Sandbox Definition** that implements the full UML sequence for
 *Sub Case 2d*: a trainee authors a **CACAO 2.0** playbook to block a malicious
-source IP, **NG-SOAR** (KMS + CACAO Validator/Executor) validates and executes
-it against the **Lab Firewall**, and the cyber range provides evaluation
-feedback.
+source IP, **NG-SOAR** (KMS + CACAO Validator/Executor) stores and validates
+it, the **NG-SOAR Operator** executes it (host firewall rule on the **Lab Target
+Service**), and the cyber range compiles the results for **Evaluation/Reporting**.
+
+Only the software components of the UML diagram are deployed. From the reference
+`integrations` sandbox only NG-SOAR is reused; MISP, DFIR-IRIS, RITA, Portainer,
+Caldera, OpenVAS, NG-SIEM, SACTI, the MCP servers and AnythingLLM are
+deliberately **not** deployed. `lab-router` (Internet egress) and command logging
+are CyberRangeCZ platform infrastructure, not scenario tools.
 
 Infrastructure conventions (images, flavors, `mgmt_user`, Docker/NG-SOAR
 deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
@@ -26,11 +32,12 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
     └── roles/
         ├── common/                   # base packages, scenario markers
         ├── docker_server/            # Docker + NG-SOAR stack (integrations pattern)
-        ├── ng_soar/                  # KMS + CACAO Validator/Executor + toolkit
+        ├── ng_soar/                  # KMS + CACAO Validator/Executor + soar-operator console
         ├── lab_target/               # protected HTTP/SSH service + nftables input (enforcement)
         ├── attacker/                 # suspicious-traffic generator (test IP)
-        ├── student_ws/               # brief + CACAO toolkit + cacao-client
-        ├── evaluation_reporting/     # feedback ingest + training summary
+        ├── student_ws/               # Cyber Range console: brief, toolkit, cacao-client, cr-compile
+        ├── evaluation_reporting/     # compiled-report ingest + training summary
+        ├── scenario_selftest/        # deploy-time 16-step self-test + instructor smoke-test
         ├── all/                      # Kali rsyslog fix + command logging
         └── man/                      # syslog-ng forwarding (mgmt node)
 ```
@@ -42,7 +49,7 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
 | `ng-soar` | KMS + CACAO Validator/Executor (Docker) | ubuntu-noble-x86_64 / ubuntu / `standard.xsmedium` | 10.10.30.10 |
 | `lab-target` | protected HTTP/SSH service **+ host-based enforcement (nftables input)** | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.20.10 |
 | `attacker` | suspicious traffic / malicious test IP | kali / debian / `standard.xmedium` | 10.10.10.10 |
-| `student-ws` | trainee authoring workstation | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.30.20 |
+| `student-ws` | Cyber Range trainee console (brief, toolkit, `cacao-client`, `cr-compile`) | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.30.20 |
 | `evaluation-reporting` | feedback & summary | ubuntu-noble-x86_64 / ubuntu / `standard.small` | 10.10.30.30 |
 | `lab-router` **(ROUTER)** | Internet egress / default gateway | debian-12-x86_64 / debian / `standard.small` | 10.10.0.1 |
 
@@ -62,24 +69,35 @@ convention as the reference sandbox).
 
 ## UML → resource mapping (all 16 steps covered)
 
+| UML participant | Resource |
+|-----------------|----------|
+| NG-SOC Operator (Scenario Initiator) | instructor starting the training run on CyberRangeCZ |
+| Student (Trainee) | trainee on `student-ws` (`cacao-client`) |
+| NG-SOAR Operator | `soar-operator` account on `ng-soar` (`soar-operator` CLI, token-gated API) |
+| Hands-on Educational Platform (Cyber Range) | CyberRangeCZ + `student-ws` (brief, toolkit, `cr-compile`) |
+| NG-SOAR (KMS + CACAO Validator/Executor) | `ng-soar` `:9100` (`app.py`, KMS in `/var/log/ng-soar/kms`) |
+| Attacker (malicious test IP) | `attacker` 10.10.10.10 |
+| Lab Target Service (host firewall - nftables) | `lab-target` 10.10.20.10 (nginx + nftables `input`) |
+| Evaluation/Reporting | `evaluation-reporting` `:9000` |
+
 | # | UML step | Implemented by |
 |---|----------|----------------|
-| 1 | NG-SOC Op → Cyber Range: initiate exercise | Sandbox instantiation; `common` drops `/etc/cacao-training.env` marker |
-| 2 | Cyber Range → Target: suspicious traffic from test IP | `attacker` → `generate_suspicious_traffic.sh` + `suspicious-traffic.service` |
-| 3 | Cyber Range → Student: exercise brief | `student_ws` → `EXERCISE_BRIEF.md` in `~/cacao/` |
-| 4 | Student → Cyber Range: create CACAO playbook | `student_ws` workspace `~/cacao/` + `template_block_ip.json` |
-| 5 | Cyber Range → Student: templates, schema hints, firewall commands | `ng_soar` toolkit (served via KMS) + local copy: `template_block_ip.json`, `schema_hints.md`, `supported_firewall_commands.md` |
-| 6 | Student → Cyber Range: submit for validation | `cacao-client validate` → `POST /validate` on NG-SOAR |
-| 7 | NG-SOAR: validate syntax, workflow logic, params | `ng_soar` CACAO Validator → `validate_cacao()` in `app.py` |
-| 8 | NG-SOAR → Student: validation result | `/validate` response (errors/approval) |
-| 9 | Student → NG-SOAR: correct & resubmit | re-run `cacao-client validate` after edits |
-| 10 | NG-SOAR → Student: approved, ready to execute | `approved: true` verdict from validator |
-| 11 | Student → NG-SOAR: execute validated playbook | `cacao-client execute` → `POST /execute` |
-| 12 | NG-SOAR → Lab Firewall: apply block rule | `execute_cacao()` SSH to lab-target: `nft add rule inet filter input ... saddr <ip> drop` |
-| 13 | NG-SOAR → Lab Target: verify traffic blocked | executor drives attacker probe; `blocked: true` |
-| 14 | NG-SOAR → Student: logs, status, evidence | `/execute` response: log, `firewall_evidence` (nft ruleset), status |
-| 15 | NG-SOAR → Evaluation/Reporting: compile report | executor `POST /ingest` on evaluation host |
-| 16 | Evaluation/Reporting → Student: training summary | `cacao-client summary` → `GET /summary` |
+| 1 | NG-SOC Op → Cyber Range: initiate exercise | training run / sandbox allocation; `common` marker `/etc/cacao-training.env` |
+| 2 | Cyber Range → Attacker: suspicious traffic | `attacker` → `suspicious-traffic.service` (`/admin`, `/.env`, port 22 → lab-target) |
+| 3 | Cyber Range → Student: exercise brief | `student_ws` → `~/cacao/EXERCISE_BRIEF.md` + `detected_traffic.log` |
+| 4 | Student → NG-SOAR: create CACAO playbook | `cacao-client create` → `POST /playbooks` (KMS status `draft`) |
+| 5 | Cyber Range → Student: templates, hints, commands | `student_ws/files/cacao-toolkit/` → `~/cacao/` |
+| 6 | Student → NG-SOAR: submit for validation | `cacao-client submit` → `POST /playbooks/submit` |
+| 7 | NG-SOAR: validate syntax, logic, params | `validate_cacao()` in `app.py` |
+| 8 | NG-SOAR → Student: errors or approval | submit response (`approved`, `errors`, `warnings`, `attempt`, `status`) |
+| 9 | Student → NG-SOAR: correct and resubmit | `cacao-client submit` again (status `rejected` → …) |
+| 10 | NG-SOAR → NG-SOAR Operator: ready for execution | status `ready-for-execution`, `operator-notifications.log`, `soar-operator queue` |
+| 11 | NG-SOAR Operator → NG-SOAR: execute | `soar-operator execute <id>` → `POST /operator/execute/<id>` (Student `/execute` → 403) |
+| 12 | NG-SOAR → Lab Target: host firewall rule | SSH `soar-fw@lab-target`: `nft add rule inet filter input ip saddr <ip> counter drop` |
+| 13 | NG-SOAR → Attacker → Lab Target: verify | probe from the attacker → `BLOCKED` |
+| 14 | NG-SOAR → Student: logs, status, evidence | `cacao-client report` → `GET /playbooks/<id>/execution` |
+| 15 | Cyber Range → Evaluation: compile | `cr-compile` (timer 30 s / `--now`) → `POST /ingest` |
+| 16 | Evaluation → Student: training summary | `cacao-client summary` → `GET /summary` |
 
 ## NG-SOAR deployment
 
@@ -90,10 +108,11 @@ runs it with `community.docker.docker_compose_v2` (`build: always`). If the SMB
 share is unreachable, a **bundled fallback compose** (`docker_server/files/`)
 brings up the KMS so the training still runs.
 
-`ng_soar` then deploys the **CACAO Validator/Executor** container
-(`/opt/ng-soar-cacao`, `:9100`) that provides the runnable validation/execution
-used by the 16-step flow, publishes the CACAO toolkit through the KMS, and
-generates the SSH keypair the executor uses to manage lab-target and attacker. In
+`ng_soar` then deploys the **KMS + CACAO Validator/Executor** container
+(`/opt/ng-soar-cacao`, `:9100`) that provides the runnable storage/validation/
+execution used by the 16-step flow, creates the **NG-SOAR Operator** account
+(`soar-operator`, password in `vault.yml`, token in `/etc/ng-soar/operator.token`),
+and generates the SSH keypair the executor uses to manage lab-target and attacker. In
 production this front-ends the real NG-SOAR/SOARCA executor
 (`:8080/trigger/playbook`).
 
@@ -118,19 +137,33 @@ ansible-galaxy collection install -r requirements.yml # collections
 ansible-playbook --syntax-check playbook.yml
 ```
 
-## Run the CACAO workflow (from student-ws)
+## Run the CACAO workflow
+
+Training definition: `V3_puc2-subcase2d-cacao-malicious-ip-block-training.json`.
 
 ```sh
+# Student (student-ws)
 cd ~/cacao
 cp template_block_ip.json my_playbook.json
-# edit my_playbook.json: set a real "id" and source_ip 10.10.10.10
-cacao-client validate my_playbook.json      # UML 6,7,8 (fix errors, resubmit = UML 9)
-cacao-client execute  my_playbook.json      # UML 11,12,13,14
+# edit: "id": "playbook--$(uuidgen)", source_ip 10.10.10.10
+cacao-client create my_playbook.json        # UML 4  -> draft
+cacao-client submit my_playbook.json        # UML 6-10 (fix errors, resubmit = UML 9)
+cacao-client status my_playbook.json        # ready-for-execution
+
+# NG-SOAR Operator (ssh soar-operator@10.10.30.10)
+soar-operator queue                         # UML 10
+soar-operator execute playbook--<uuid>      # UML 11-13
+
+# Student again
+cacao-client report my_playbook.json        # UML 14
+cr-compile --now                            # UML 15 (also automatic every 30 s)
 cacao-client summary                        # UML 16
 ```
 
 A reference solution is provided at
-`provisioning/roles/ng_soar/files/cacao-toolkit/sample_block_ip_playbook.json`.
+`provisioning/roles/student_ws/files/cacao-toolkit/sample_block_ip_playbook.json`.
+Instructor check (on ng-soar, before trainees start):
+`sudo /usr/local/sbin/scenario-smoketest.sh`.
 
 ## Secrets management
 

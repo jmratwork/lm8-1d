@@ -31,6 +31,9 @@ syslog_forward_port: 515
 ubuntu_password_hash: "$y$j9T$r1LaddN0V6MPqFmZl5U7C/$4xbYJL5zi/YFU85SL/gXz5UXs3JAXV5dU5CUvTN/WN9"
 # debian on Kali (reference sets it from the literal 'qwerty!23')
 kali_debian_password_plain: "qwerty!23"
+# NG-SOAR Operator login on ng-soar (UML 10-11). It is printed in the training
+# definition role card (levels 24 and 27): change both together.
+soar_operator_password: "Operator2d!"
 
 # --- NG-SOAR executor SSH management (lab-target + attacker) -----------------
 # The executor keypair is generated at provisioning time by the ng_soar role

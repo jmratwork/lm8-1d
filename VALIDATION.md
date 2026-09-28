@@ -9,11 +9,12 @@ Aligned with the reference sandbox
 |----------------------|------------------|----------------|
 | Hands-on Educational Platform (Cyber Range) | the CyberRangeCZ platform | `topology.yml`, `variables.yml` |
 | NG-SOAR (KMS + CACAO Validator/Executor) | host `ng-soar`: NG-SOAR stack (SMB/Docker) + CACAO Validator/Executor container | `docker_server`, `ng_soar` |
-| Lab Firewall | host `lab-firewall` (nftables, tri-homed gateway) | `lab_firewall` |
+| Lab Target Service host firewall | nftables `input` on `lab-target` (see §9) | `lab_target` |
+| NG-SOAR Operator | `soar-operator` account + console on `ng-soar` (see §10) | `ng_soar` |
 | Lab Target Service | host `lab-target` (nginx + ssh) | `lab_target` |
 | Evaluation/Reporting | host `evaluation-reporting` (ingest+summary) | `evaluation_reporting` |
 | Malicious test IP | host `attacker` (10.10.10.10) | `attacker` |
-| Student workstation | host `student-ws` (brief, toolkit, `cacao-client`) | `student_ws` |
+| Cyber Range trainee console | host `student-ws` (brief, toolkit, `cacao-client`, `cr-compile`) | `student_ws` |
 | Command logging (platform) | `sandbox-logging` role + `man` syslog-ng | `all`, `man`, `requirements.yml` |
 
 ## 2. Alignment with the real infrastructure (integrations)
@@ -215,3 +216,37 @@ secrets) are aligned with the real `integrations` sandbox; the topology is
 coherent with the firewall on the attacker→target path; and all YAML/JSON/Python
 assets pass local validation. Remaining checks (`--syntax-check`, live deploy)
 must run on a Linux management node.
+
+## 10. Alignment with the revised UML (training V3)
+
+The revised sequence diagram separates duties and moves two steps to the Cyber
+Range. Changes:
+
+| UML | Before | Now |
+|-----|--------|-----|
+| 4 | playbook only existed as a local file | `POST /playbooks` stores it in the NG-SOAR KMS (`draft`); NG-SOAR refuses ids that are not `playbook--<uuid-v4>` |
+| 5 | toolkit presented as served by the KMS | toolkit moved to `student_ws/files/cacao-toolkit` (delivered by the Cyber Range) |
+| 6-9 | stateless `/validate` | `POST /playbooks/submit` validates, keeps the history, status `rejected` / `ready-for-execution` |
+| 10 | - | approved playbooks are queued for the NG-SOAR Operator (`operator-notifications.log`, `soar-operator queue`) |
+| 11 | Student ran `/execute` | Student `/execute` returns **403**; only `POST /operator/execute/<id>` with `X-Operator-Token` executes, and only KMS entries in `ready-for-execution` |
+| 14 | returned only to the caller of `/execute` | `GET /playbooks/<id>/execution` for the Student |
+| 15 | NG-SOAR pushed to Evaluation | `cr-compile` (Cyber Range, timer 30 s) compiles playbook + validation results + execution logs and POSTs `/ingest` |
+
+Other fixes found while doing this:
+- the self-test used to leave a `PASS` summary in Evaluation/Reporting before the
+  trainee started; it now removes its KMS entry and its report in the `always:` block;
+- the instructor smoke-test (which contains the answers) is no longer installed on
+  `student-ws`, only on `ng-soar`;
+- the host firewall evidence is captured after the probe, so the drop counter shows
+  the match.
+
+Local checks run (Windows, services started with `python`, `jq` 1.7.1):
+`create` of the untouched template → 400; submit before create → 404; missing
+`workflow_start` / unknown `on_completion` → expected errors; approval →
+`ready-for-execution`; Student execute → HTTP 403; operator queue without token →
+403, with token → lists `source_ip 10.10.10.10`; operator execute → `executed_by:
+ng-soar-operator`, re-execute → 409; `cr-compile` → 2 artifacts before execution
+and 3 after; summary includes `compiled_artifacts`, `validation_attempts` and
+`executed_by`. The SSH block itself (`success`/`BLOCKED`/`PASS`) can only be checked
+on a deployed sandbox: the self-test asserts it there.
+

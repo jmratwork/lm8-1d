@@ -8,37 +8,41 @@ Target Service.
 ```
 Malicious source IP : 10.10.10.10   (attacker)
 Protected service   : http://10.10.20.10:80   (lab-target)
-Enforcement point   : Lab Target Service (nftables input)  managed by NG-SOAR
+Enforcement point   : Lab Target Service host firewall (nftables input), managed by NG-SOAR
 ```
 
-NG-SOC has attached the observed detection evidence at
-`~/cacao/detected_traffic.log` — the suspicious requests seen from the malicious
-IP (sensitive-file probing such as `GET /admin` and `GET /.env`, plus an SSH
-port-22 scan). Review it to understand what the attacker is after.
+The detection evidence is at `~/cacao/detected_traffic.log` — the suspicious
+requests seen from the malicious IP (sensitive-file probing such as `GET /admin`
+and `GET /.env`, plus an SSH port-22 scan). Review it to understand what the
+attacker is after.
 
 ## Your task
-Author a **CACAO 2.0 playbook** that blocks the malicious source IP with an
-nftables **input** drop rule on the **Lab Target Service**, then have **NG-SOAR
-validate and execute** it.
+Author a **CACAO 2.0 playbook** that blocks the malicious source IP on the
+**target host firewall** (nftables **input** drop rule on the Lab Target
+Service), create it in **NG-SOAR** and get it validated. The **NG-SOAR
+Operator** executes approved playbooks.
 
-1. Start from the template: `~/cacao/template_block_ip.json` (UML step 5).
-2. Read the schema hints (`~/cacao/schema_hints.md`) and the supported firewall
-   commands (`~/cacao/supported_firewall_commands.md`).
-3. Fill in a valid `id`, and set the `source_ip` to the malicious IP.
-4. Submit it for validation; fix any errors NG-SOAR reports and resubmit.
-5. Once approved, execute it and confirm the malicious traffic is blocked.
+1. Use the materials the Cyber Range gave you (UML step 5):
+   `template_block_ip.json`, `schema_hints.md`, `supported_firewall_commands.md`.
+2. Copy the template to `~/cacao/my_playbook.json`, set a valid `id`
+   (`playbook--<uuid-v4>`) and the `source_ip` to the malicious IP.
+3. Create it in NG-SOAR (UML 4), submit it for validation (UML 6), fix any
+   errors and resubmit (UML 9) until it is approved (UML 10).
+4. After the NG-SOAR Operator executes it (UML 11-13), review the execution
+   logs and host firewall evidence (UML 14) and your training summary (UML 16).
 
 ## Helper client
-A wrapper around the NG-SOAR CACAO API is installed as `cacao-client`:
-
 ```sh
-cacao-client validate ~/cacao/my_playbook.json     # UML steps 6,7,8
-cacao-client execute  ~/cacao/my_playbook.json     # UML steps 11-14
-cacao-client summary                               # UML step 16
+cacao-client create  ~/cacao/my_playbook.json   # UML 4
+cacao-client submit  ~/cacao/my_playbook.json   # UML 6-10
+cacao-client status  ~/cacao/my_playbook.json   # KMS status
+cacao-client report  ~/cacao/my_playbook.json   # UML 14
+cacao-client summary                            # UML 16
 ```
 
 ## Success criteria
-- NG-SOAR returns `approved: true` for your playbook.
-- After execution, the verification probe from the attacker host reports
-  `blocked` and the target's ruleset (`firewall_evidence`) shows your drop rule
-  with the comment `cacao-block-10.10.10.10`.
+- NG-SOAR returns `approved: true` and your playbook is `ready-for-execution`.
+- After execution, the verification probe from the malicious IP reports
+  `BLOCKED` and the host firewall evidence (`firewall_evidence`) shows your drop
+  rule with the comment `cacao-block-10.10.10.10`.
+- Your training summary grade is `PASS`.

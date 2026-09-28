@@ -14,4 +14,4 @@
 2026-06-21T08:59:52Z 10.10.10.10 "TCP-SYN port=22" -
 # Summary: repeated probing for sensitive files (/admin, /.env) and an SSH (22)
 # port scan from 10.10.10.10. Recommended action: block the source IP at the
-# Lab Firewall via a CACAO playbook.
+# Lab Target Service host firewall (nftables input) via a CACAO playbook.

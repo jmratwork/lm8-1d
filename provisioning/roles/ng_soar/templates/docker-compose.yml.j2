@@ -1,5 +1,6 @@
 # =============================================================================
-# NG-SOAR :: CACAO Validator/Executor compose project (rendered by ng_soar role)
+# NG-SOAR :: KMS + CACAO Validator/Executor compose project (rendered by ng_soar role)
+# /etc/ng-soar/operator.token gates the NG-SOAR Operator endpoints (UML 10-11).
 # =============================================================================
 services:
   cacao-validator-executor:
@@ -16,10 +17,11 @@ services:
       ATTACKER_USER: "{{ mgmt_user }}"
       TARGET_HOST: "{{ target_service_ip }}"
       TARGET_PORT: "{{ target_service_http_port }}"
-      EVAL_URL: "http://{{ evaluation_ip }}:9000/ingest"
       SSH_KEY: "/keys/id_ed25519"
+      OPERATOR_TOKEN_FILE: "/secrets/operator.token"
     volumes:
       - /opt/ng-soar-cacao/keys:/keys:ro
+      - /etc/ng-soar:/secrets:ro
       - /var/log/ng-soar:/var/log/ng-soar
     networks:
       - ngsoar

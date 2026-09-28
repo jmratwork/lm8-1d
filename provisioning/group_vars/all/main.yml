@@ -23,3 +23,11 @@ target_service_ssh_port: 22
 # Management account the NG-SOAR executor uses to SSH into lab-target (apply the
 # block) and into the attacker (drive the verification probe).
 mgmt_user: "soar-fw"
+
+# NG-SOAR Operator (UML 10-11): the only role allowed to execute approved
+# playbooks. Login on ng-soar; password in vault.yml (soar_operator_password).
+soar_operator_user: "soar-operator"
+
+# Hands-on Educational Platform: the trainee's playbook that `cr-compile`
+# compiles for Evaluation/Reporting (UML 15).
+cr_student_playbook: "/home/ubuntu/cacao/my_playbook.json"

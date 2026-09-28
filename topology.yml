@@ -1,7 +1,7 @@
 ---
 # =============================================================================
 # CyberRangeCZ Sandbox Definition - Topology Definition
-# PUC2 (CYNET) - Sub Case 2d: CACAO Playbook Authoring Training (Firewall IP Block)
+# PUC2 (CYNET) - Sub Case 2d: CACAO Playbook Authoring Training (Malicious IP Block)
 # -----------------------------------------------------------------------------
 # Schema reference:
 #   https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/topology-definition/

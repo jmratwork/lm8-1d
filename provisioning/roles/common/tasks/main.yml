@@ -47,7 +47,7 @@
     dest: /etc/cacao-training.env
     mode: "0644"
     content: |
-      SCENARIO="PUC2 Sub Case 2d - CACAO Playbook Authoring Training (Firewall IP Block)"
+      SCENARIO="PUC2 Sub Case 2d - CACAO Playbook Authoring Training (Malicious IP Block)"
       MALICIOUS_SOURCE_IP={{ malicious_source_ip }}
       TARGET_SERVICE_IP={{ target_service_ip }}
       NG_SOAR_IP={{ ng_soar_ip }}

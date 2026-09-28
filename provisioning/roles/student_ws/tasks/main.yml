@@ -1,8 +1,11 @@
 ---
 # =============================================================================
 # role: student_ws
-# Trainee workstation: exercise brief (UML 3), local copy of the CACAO toolkit
-# (UML 5) and the cacao-client used to submit/correct/execute (UML 4,6,9,11,16).
+# Hands-on Educational Platform (Cyber Range) trainee console:
+#   - exercise brief + detection evidence            (UML 3)
+#   - templates, schema hints, firewall commands      (UML 5)
+#   - cacao-client: Student side of UML 4, 6, 9, 14, 16
+#   - cr-compile: compiles results for Evaluation     (UML 15)
 # Host image is ubuntu-noble-x86_64 (mgmt_user: ubuntu).
 # =============================================================================
 
@@ -11,6 +14,7 @@
     name:
       - curl
       - jq
+      - uuid-runtime
     state: present
     update_cache: true
 
@@ -38,9 +42,9 @@
     group: ubuntu
     mode: "0644"
 
-- name: Deliver the CACAO toolkit locally (templates, hints, supported commands)
+- name: Deliver the CACAO toolkit (UML step 5 - templates, hints, supported commands)
   ansible.builtin.copy:
-    src: "{{ role_path }}/../ng_soar/files/cacao-toolkit/"
+    src: cacao-toolkit/
     dest: /home/ubuntu/cacao/
     owner: ubuntu
     group: ubuntu
@@ -52,18 +56,56 @@
     dest: /usr/local/bin/cacao-client
     mode: "0755"
 
-- name: Install the instructor smoke-test script (per-level checks)
+- name: Install the Cyber Range compiler (UML step 15)
   ansible.builtin.copy:
-    src: "{{ role_path }}/../scenario_selftest/files/scenario-smoketest.sh"
-    dest: /usr/local/sbin/scenario-smoketest.sh
-    owner: root
-    group: root
-    mode: "0750"
+    src: cr-compile.sh
+    dest: /usr/local/bin/cr-compile
+    mode: "0755"
 
-- name: Point the client at NG-SOAR and Evaluation/Reporting
+- name: Point the client tools at NG-SOAR and Evaluation/Reporting
   ansible.builtin.copy:
     dest: /etc/profile.d/cacao-client.sh
     mode: "0644"
     content: |
       export NG_SOAR_URL="http://{{ ng_soar_ip }}:9100"
       export EVAL_URL="http://{{ evaluation_ip }}:9000"
+      export CR_PLAYBOOK="{{ cr_student_playbook }}"
+
+- name: Install the cr-compile service and timer (every 30 s)
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: cr-compile.service
+      content: |
+        [Unit]
+        Description=Cyber Range: compile student results for Evaluation/Reporting (UML 15)
+        After=network-online.target
+        Wants=network-online.target
+        [Service]
+        Type=oneshot
+        User=ubuntu
+        Environment=NG_SOAR_URL=http://{{ ng_soar_ip }}:9100
+        Environment=EVAL_URL=http://{{ evaluation_ip }}:9000
+        Environment=CR_PLAYBOOK={{ cr_student_playbook }}
+        ExecStart=/usr/local/bin/cr-compile
+    - name: cr-compile.timer
+      content: |
+        [Unit]
+        Description=Run the Cyber Range compiler every 30 s (UML 15)
+        [Timer]
+        OnBootSec=60
+        OnUnitActiveSec=30
+        AccuracySec=5
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Enable the cr-compile timer
+  ansible.builtin.systemd:
+    name: cr-compile.timer
+    enabled: true
+    daemon_reload: true
+    state: started
