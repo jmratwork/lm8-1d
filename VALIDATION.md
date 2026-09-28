@@ -263,5 +263,12 @@ artifacts, summary=PASS) and rollback completed. Follow-ups applied:
   already ships them);
 - the Kali libfastjson patch in the `all` role is kept on purpose (documented);
 - deploy logs (`log.txt`, `*.log`) are git-ignored.
-Not covered by the log: the `soar-operator` SSH password login (training level
-27), which must be checked by hand.
+Access model corrected afterwards: on CyberRangeCZ people reach nodes through the
+topology GUI (**Open console** = a terminal on that node; a graphical desktop only
+when a tool needs one - none does here). The trainee therefore acts as NG-SOAR
+Operator in the `ng-soar` **console** (login `soar-operator`), not by SSH from
+student-ws: the sshd password-login block was removed, levels 2/3/24/27/28 were
+rewritten, and `soar-operator execute` no longer needs a UUID typed by hand when a
+single playbook is queued. SSH remains only as NG-SOAR's own key-based automation
+towards lab-target and the attacker (UML 12-13), which is not user access.
+To check by hand: console login of `soar-operator` on `ng-soar` (level 27).

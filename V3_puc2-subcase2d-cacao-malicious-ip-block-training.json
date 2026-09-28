@@ -2,7 +2,7 @@
   "title": "PUC2-Sub Case 2d: CACAO Playbook Authoring Training (Malicious IP Block)",
   "description": "A hands-on training for the CyberRangeCZ Platform that follows the 16-step PUC2 Sub Case 2d UML sequence. The Student authors a CACAO 2.0 playbook in NG-SOAR (KMS) to block a malicious source IP on the Lab Target Service host firewall (nftables input), gets it validated by the NG-SOAR CACAO Validator, the NG-SOAR Operator executes it, NG-SOAR verifies the block from the malicious IP and returns the evidence, and the Cyber Range compiles the results for Evaluation/Reporting, which returns the training summary. Designed for the lm8-1d sandbox (single flat network, host-based enforcement on lab-target).",
   "prerequisites": [
-    "Basic Linux command line (cat, ls, curl, grep, ssh, a text editor).",
+    "Basic Linux command line (cat, ls, curl, grep, a text editor).",
     "Basic understanding of host firewalls and IP addressing.",
     "No prior CACAO knowledge required - it is taught in the training."
   ],
@@ -30,7 +30,7 @@
       "order": 1,
       "estimated_duration": 4,
       "minimal_possible_solve_time": null,
-      "content": "# Who is who\n\n| UML participant | In this sandbox |\n|-----------------|-----------------|\n| NG-SOC Operator (Scenario Initiator) | Your instructor: starts the training run on the platform (UML 1) |\n| Student (Trainee) | **You**, working from the Cyber Range trainee console |\n| NG-SOAR Operator | The only role allowed to execute approved playbooks (you will role-play it in levels 27-28) |\n| Hands-on Educational Platform (Cyber Range) | CyberRangeCZ + the trainee console `student-ws` (brief, toolkit, `cacao-client`, `cr-compile`) |\n| NG-SOAR (KMS + CACAO Validator/Executor) | `ng-soar` - API on port 9100, operator console `soar-operator` |\n| Attacker (malicious test IP) | `attacker` |\n| Lab Target Service (host firewall - nftables) | `lab-target` - HTTP/SSH service **and** enforcement point |\n| Evaluation/Reporting | `evaluation-reporting` - API on port 9000 |\n\n## Hosts (one flat network `10.10.0.0/16`)\n\n| Host | IP | Role |\n|------|----|------|\n| student-ws | 10.10.30.20 | Cyber Range trainee console (you) |\n| ng-soar | 10.10.30.10 | NG-SOAR: KMS + CACAO Validator/Executor |\n| evaluation-reporting | 10.10.30.30 | Evaluation/Reporting |\n| attacker | 10.10.10.10 | Malicious test IP |\n| lab-target | 10.10.20.10 | Lab Target Service + host firewall (nftables `input`) |\n\n## Student commands (`cacao-client`)\n```sh\ncacao-client create  ~/cacao/my_playbook.json   # UML 4  - create the playbook in NG-SOAR (KMS)\ncacao-client submit  ~/cacao/my_playbook.json   # UML 6/9 - submit (or resubmit) for validation\ncacao-client status  ~/cacao/my_playbook.json   # UML 10 - KMS status of your playbook\ncacao-client report  ~/cacao/my_playbook.json   # UML 14 - execution logs, status, firewall evidence\ncacao-client summary                            # UML 16 - training summary\n```\nThe Student **cannot execute** playbooks - that is the NG-SOAR Operator's job.\n"
+      "content": "# Who is who\n\n| UML participant | In this sandbox |\n|-----------------|-----------------|\n| NG-SOC Operator (Scenario Initiator) | Your instructor: starts the training run on the platform (UML 1) |\n| Student (Trainee) | **You**, working from the Cyber Range trainee console |\n| NG-SOAR Operator | The only role allowed to execute approved playbooks (you will role-play it in levels 27-28) |\n| Hands-on Educational Platform (Cyber Range) | CyberRangeCZ + the trainee console `student-ws` (brief, toolkit, `cacao-client`, `cr-compile`) |\n| NG-SOAR (KMS + CACAO Validator/Executor) | `ng-soar` - API on port 9100, operator console `soar-operator` |\n| Attacker (malicious test IP) | `attacker` |\n| Lab Target Service (host firewall - nftables) | `lab-target` - HTTP/SSH service **and** enforcement point |\n| Evaluation/Reporting | `evaluation-reporting` - API on port 9000 |\n\n## Hosts (one flat network `10.10.0.0/16`)\n\n| Host | IP | Role | You open its console? |\n|------|----|------|-----------------------|\n| student-ws | 10.10.30.20 | Cyber Range trainee console | **Yes** - as Student (most levels) |\n| ng-soar | 10.10.30.10 | NG-SOAR: KMS + CACAO Validator/Executor | **Yes** - as NG-SOAR Operator (levels 27-28) |\n| evaluation-reporting | 10.10.30.30 | Evaluation/Reporting | No (reached through `cacao-client`) |\n| attacker | 10.10.10.10 | Malicious test IP | No |\n| lab-target | 10.10.20.10 | Lab Target Service + host firewall (nftables `input`) | No |\n\nYou work in **node consoles** opened from the topology view (right-click the\nnode -> **Open console**). Every tool in this training is command line: no\ngraphical desktop is needed.\n\n## Student commands (`cacao-client`)\n```sh\ncacao-client create  ~/cacao/my_playbook.json   # UML 4  - create the playbook in NG-SOAR (KMS)\ncacao-client submit  ~/cacao/my_playbook.json   # UML 6/9 - submit (or resubmit) for validation\ncacao-client status  ~/cacao/my_playbook.json   # UML 10 - KMS status of your playbook\ncacao-client report  ~/cacao/my_playbook.json   # UML 14 - execution logs, status, firewall evidence\ncacao-client summary                            # UML 16 - training summary\n```\nThe Student **cannot execute** playbooks - that is the NG-SOAR Operator's job.\n"
     },
     {
       "title": "3. Access the Cyber Range trainee console",
@@ -39,7 +39,7 @@
       "estimated_duration": 3,
       "minimal_possible_solve_time": null,
       "passkey": "start",
-      "cloud_content": "Get into the sandbox from where you will do everything else. When connected,\nsubmit the passkey **`start`**.\n\n### Connect via the GUI console\n1. In the topology view on the right, **right-click `student-ws`** and choose\n   **Open console**.\n2. Log in with the sandbox credentials provided by your instructor.\n\n### Or connect via SSH\nSSH makes copy-pasting commands easier. See the\n[sandbox access documentation](https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-access/#user-access).\n\nThen submit **`start`** to continue.\n",
+      "cloud_content": "Get into the sandbox from where you will do everything else. When connected,\nsubmit the passkey **`start`**.\n\n### Open the `student-ws` console\n1. In the topology view on the right, **right-click `student-ws`** and choose\n   **Open console**. A terminal on that node opens in a new tab.\n2. Log in with the sandbox credentials provided by your instructor.\n3. Check you are in the right place: `ls ~/cacao/` lists the exercise files.\n\nSee the [sandbox access documentation](https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-access/#user-access).\n\nKeep this console open: you will come back to it after acting as the NG-SOAR\nOperator.\n\nThen submit **`start`** to continue.\n",
       "local_content": "This training is designed for the cloud sandbox on the CyberRangeCZ Platform."
     },
     {
@@ -398,8 +398,8 @@
       "minimal_possible_solve_time": 1,
       "answer": "playbook--",
       "answer_variable_name": null,
-      "content": "The template id `playbook--REPLACE-WITH-UUID` is only a placeholder. A CACAO id\nis `playbook--<uuid-v4>` and it is also the key under which NG-SOAR (KMS) stores\nyour playbook. Generate a UUID and set it now, **before** creating the playbook\nin NG-SOAR.\n\n```sh\nuuidgen\n# edit ~/cacao/my_playbook.json -> \"id\": \"playbook--<that-uuid>\"\n```\n\nWhile editing, also set `playbook_variables.source_ip.value` to the malicious IP\nfrom the brief.\n\n**Answer:** the mandatory prefix of a CACAO playbook id.\n",
-      "solution": "1. `uuidgen` -> e.g. `3b1d2f0a-9b2e-4d1c-8a77-0a1b2c3d4e5f`.\n2. Set `\"id\": \"playbook--3b1d2f0a-...\"` and `source_ip.value` = `10.10.10.10`.\n3. The mandatory prefix is **`playbook--`**.\n",
+      "content": "The template id `playbook--REPLACE-WITH-UUID` is only a placeholder. A CACAO id\nis `playbook--<uuid-v4>` and it is also the key under which NG-SOAR (KMS) stores\nyour playbook. Generate a UUID and set it now, **before** creating the playbook\nin NG-SOAR.\n\n```sh\nsed -i \"s/playbook--REPLACE-WITH-UUID/playbook--$(uuidgen)/\" ~/cacao/my_playbook.json\ngrep '\"id\"' ~/cacao/my_playbook.json\n```\n(or run `uuidgen` and paste the value by hand in your editor)\n\nWhile editing, also set `playbook_variables.source_ip.value` to the malicious IP\nfrom the brief.\n\n**Answer:** the mandatory prefix of a CACAO playbook id.\n",
+      "solution": "1. `sed -i \"s/playbook--REPLACE-WITH-UUID/playbook--$(uuidgen)/\" ~/cacao/my_playbook.json`\n   (e.g. `playbook--3b1d2f0a-9b2e-4d1c-8a77-0a1b2c3d4e5f`).\n2. Check the `id` and `source_ip.value` = `10.10.10.10`.\n3. The mandatory prefix is **`playbook--`**.\n",
       "solution_penalized": true,
       "hints": [
         {
@@ -417,6 +417,7 @@
       "mitre_techniques": [],
       "expected_commands": [
         "uuidgen",
+        "sed",
         "nano",
         "vim"
       ],
@@ -787,7 +788,7 @@
       "order": 23,
       "estimated_duration": 3,
       "minimal_possible_solve_time": null,
-      "content": "# Execution\n\n- **UML 11** - the **NG-SOAR Operator** executes the validated playbook;\n- **UML 12** - NG-SOAR applies the **host firewall rule** on the Lab Target Service\n  (drop the malicious source IP in the nftables `input` chain);\n- **UML 13** - NG-SOAR **verifies the block** by probing the target **from the\n  malicious IP** (the attacker) - the probe must return `BLOCKED`;\n- **UML 14** - NG-SOAR provides **you** the execution logs, status and host\n  firewall evidence.\n\nSeparation of duties: the Student authors, the NG-SOAR Operator executes. You\nwill first confirm that you *cannot* execute, then switch to the operator role.\n\n### NG-SOAR Operator role card\n| | |\n|---|---|\n| Host | `ng-soar` (10.10.30.10) |\n| User | `soar-operator` |\n| Password | `Operator2d!` |\n| Commands | `soar-operator queue`, `soar-operator execute <playbook-id>` |\n"
+      "content": "# Execution\n\n- **UML 11** - the **NG-SOAR Operator** executes the validated playbook;\n- **UML 12** - NG-SOAR applies the **host firewall rule** on the Lab Target Service\n  (drop the malicious source IP in the nftables `input` chain);\n- **UML 13** - NG-SOAR **verifies the block** by probing the target **from the\n  malicious IP** (the attacker) - the probe must return `BLOCKED`;\n- **UML 14** - NG-SOAR provides **you** the execution logs, status and host\n  firewall evidence.\n\nSeparation of duties: the Student authors, the NG-SOAR Operator executes. You\nwill first confirm that you *cannot* execute, then switch to the operator role.\n\n### NG-SOAR Operator role card\n| | |\n|---|---|\n| Access | topology view: **right-click `ng-soar` -> Open console** |\n| User | `soar-operator` |\n| Password | `Operator2d!` |\n| Commands | `soar-operator queue`, `soar-operator execute` |\n"
     },
     {
       "title": "25. Baseline - the service is reachable (UML 11)",
@@ -857,8 +858,8 @@
       "minimal_possible_solve_time": 1,
       "answer": "10.10.10.10",
       "answer_variable_name": null,
-      "content": "Switch hats: log in to NG-SOAR as the **NG-SOAR Operator** (role card in level\n24) and list the playbooks that are ready for execution.\n\n```sh\nssh soar-operator@10.10.30.10\nsoar-operator queue\n```\n\n**Answer:** the `source_ip` the queued playbook will block.\n",
-      "solution": "1. `ssh soar-operator@10.10.30.10` (password `Operator2d!`).\n2. `soar-operator queue` lists your playbook id, name, `ready-for-execution` and\n   `source_ip 10.10.10.10`.\n3. Submit **`10.10.10.10`**.\n",
+      "content": "Switch hats: act as the **NG-SOAR Operator** (role card in level 24).\n\n1. In the topology view, **right-click `ng-soar`** and choose **Open console**.\n2. Log in as `soar-operator` with the password from the role card.\n3. List the playbooks NG-SOAR approved and queued for you:\n\n```sh\nsoar-operator queue\n```\n\n**Answer:** the `source_ip` the queued playbook will block.\n",
+      "solution": "1. Topology -> right-click `ng-soar` -> **Open console**; log in as `soar-operator`\n   (password `Operator2d!`).\n2. `soar-operator queue` lists your playbook id, name, `ready-for-execution` and\n   `source_ip 10.10.10.10`.\n3. Submit **`10.10.10.10`**.\n",
       "solution_penalized": true,
       "hints": [
         {
@@ -866,6 +867,12 @@
           "content": "Only approved playbooks are queued. Make sure `cacao-client status` shows `ready-for-execution` for yours.",
           "hint_penalty": 10,
           "order": 0
+        },
+        {
+          "title": "Login refused on the ng-soar console?",
+          "content": "Use the user name `soar-operator` (not `ubuntu`) and the role-card password. The Student account cannot run `soar-operator`.",
+          "hint_penalty": 5,
+          "order": 1
         }
       ],
       "incorrect_answer_limit": 10,
@@ -875,7 +882,6 @@
       "reference_solution": [],
       "mitre_techniques": [],
       "expected_commands": [
-        "ssh",
         "soar-operator"
       ],
       "commands_required": false
@@ -888,8 +894,8 @@
       "minimal_possible_solve_time": 1,
       "answer": "success",
       "answer_variable_name": null,
-      "content": "Still as the NG-SOAR Operator, execute the approved playbook. NG-SOAR applies\nthe host firewall rule on `lab-target` (UML 12) and verifies the block from the\nmalicious IP (UML 13).\n\n```sh\nsoar-operator execute <playbook-id>     # the id shown by 'soar-operator queue'\n```\n\n**Answer:** the execution `status` on a fully successful run.\n",
-      "solution": "1. `soar-operator execute playbook--<your-uuid>`.\n2. The result is **`success`** (rule applied and probe BLOCKED).\n3. Log out (`exit`) to return to the Student console.\n",
+      "content": "Still in the `ng-soar` console as the NG-SOAR Operator, execute the approved\nplaybook. NG-SOAR applies the host firewall rule on `lab-target` (UML 12) and\nverifies the block from the malicious IP (UML 13).\n\n```sh\nsoar-operator execute      # runs the only queued playbook\n```\n(If several playbooks are queued, pass the id shown by `soar-operator queue`.)\n\n**Answer:** the execution `status` on a fully successful run.\n",
+      "solution": "1. `soar-operator execute`.\n2. The result is **`success`** (rule applied and probe BLOCKED).\n3. Log out (`exit`) and go back to the `student-ws` console.\n",
       "solution_penalized": true,
       "hints": [
         {
@@ -918,7 +924,7 @@
       "minimal_possible_solve_time": 1,
       "answer": "cacao-block-10.10.10.10",
       "answer_variable_name": null,
-      "content": "Back on the Student console, fetch the execution report NG-SOAR provides you:\nlogs, status and **host firewall evidence** (the `lab-target` nftables ruleset).\n\n```sh\ncacao-client report ~/cacao/my_playbook.json\n```\n\nThe executor tags the rule it added with a **comment**.\n\n**Answer:** the exact rule comment.\n",
+      "content": "Back on the `student-ws` console (as Student), fetch the execution report NG-SOAR provides you:\nlogs, status and **host firewall evidence** (the `lab-target` nftables ruleset).\n\n```sh\ncacao-client report ~/cacao/my_playbook.json\n```\n\nThe executor tags the rule it added with a **comment**.\n\n**Answer:** the exact rule comment.\n",
       "solution": "1. `cacao-client report ~/cacao/my_playbook.json`.\n2. In `firewall_evidence` the `input` chain shows\n   `ip saddr 10.10.10.10 counter packets N bytes M drop comment \"cacao-block-10.10.10.10\"`.\n3. Submit **`cacao-block-10.10.10.10`**.\n",
       "solution_penalized": true,
       "hints": [

@@ -46,6 +46,8 @@
     soar_executor_pubkey: "{{ soar_pub_slurp.content | b64decode | trim }}"
 
 # --- NG-SOAR Operator (UML 10-11): account, token and console ----------------
+# The operator logs in on the ng-soar node console opened from the CyberRangeCZ
+# topology (GUI -> Open console); no SSH password login is enabled.
 - name: Create the NG-SOAR Operator group
   ansible.builtin.group:
     name: "{{ soar_operator_user }}"
@@ -66,24 +68,6 @@
     executable: /bin/bash
   no_log: true
   changed_when: false
-
-- name: Allow password SSH login for the NG-SOAR Operator only
-  ansible.builtin.blockinfile:
-    path: /etc/ssh/sshd_config
-    marker: "# {mark} NG-SOAR Operator password login (PUC2 2d)"
-    insertafter: EOF
-    block: |
-      Match User {{ soar_operator_user }}
-          PasswordAuthentication yes
-          KbdInteractiveAuthentication yes
-    validate: "/usr/sbin/sshd -t -f %s"
-  register: sshd_operator
-
-- name: Restart sshd when the operator login changed (noble uses socket activation)
-  ansible.builtin.service:
-    name: ssh
-    state: restarted
-  when: sshd_operator is changed
 
 - name: Create the operator token directory
   ansible.builtin.file:

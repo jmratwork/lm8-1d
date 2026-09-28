@@ -112,7 +112,8 @@ brings up the KMS so the training still runs.
 `ng_soar` then deploys the **KMS + CACAO Validator/Executor** container
 (`/opt/ng-soar-cacao`, `:9100`) that provides the runnable storage/validation/
 execution used by the 16-step flow, creates the **NG-SOAR Operator** account
-(`soar-operator`, password in `vault.yml`, token in `/etc/ng-soar/operator.token`),
+(`soar-operator`, password in `vault.yml`, token in `/etc/ng-soar/operator.token`;
+the operator logs in on the `ng-soar` node console opened from the topology GUI),
 and generates the SSH keypair the executor uses to manage lab-target and attacker. In
 production this front-ends the real NG-SOAR/SOARCA executor
 (`:8080/trigger/playbook`).
@@ -152,9 +153,10 @@ cacao-client create my_playbook.json        # UML 4  -> draft
 cacao-client submit my_playbook.json        # UML 6-10 (fix errors, resubmit = UML 9)
 cacao-client status my_playbook.json        # ready-for-execution
 
-# NG-SOAR Operator (ssh soar-operator@10.10.30.10)
+# NG-SOAR Operator (topology GUI: right-click ng-soar -> Open console,
+#                   log in as soar-operator)
 soar-operator queue                         # UML 10
-soar-operator execute playbook--<uuid>      # UML 11-13
+soar-operator execute                       # UML 11-13 (id optional if only one is queued)
 
 # Student again
 cacao-client report my_playbook.json        # UML 14

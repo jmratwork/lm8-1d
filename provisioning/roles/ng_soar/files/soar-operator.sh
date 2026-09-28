@@ -30,11 +30,27 @@ case "$ACTION" in
     call GET /operator/queue
     ;;
   execute)    # UML 11 -> NG-SOAR applies the rule (12) and verifies the block (13)
-    [ -n "$ID" ] || { echo "Usage: soar-operator execute <playbook-id>" >&2; exit 2; }
+    if [ -z "$ID" ]; then
+      # No id: execute the only queued playbook (saves typing a UUID in the console).
+      ids=$(curl -s -H "X-Operator-Token: $TOKEN" "$NG_SOAR/operator/queue" \
+              | jq -r '.ready_for_execution[].kms_id')
+      count=$(printf '%s' "$ids" | grep -c . || true)
+      if [ "$count" -eq 0 ]; then
+        echo "soar-operator: no playbook is ready for execution (the Student must get one approved first)" >&2
+        exit 2
+      fi
+      if [ "$count" -ne 1 ]; then
+        echo "soar-operator: $count playbooks ready for execution - pass the id:" >&2
+        echo "  soar-operator execute <playbook-id>   (ids: soar-operator queue)" >&2
+        exit 2
+      fi
+      ID="$ids"
+      echo "soar-operator: executing the only queued playbook $ID" >&2
+    fi
     call POST "/operator/execute/$ID"
     ;;
   *)
     echo "Usage: soar-operator queue"
-    echo "       soar-operator execute <playbook-id>"
+    echo "       soar-operator execute [<playbook-id>]   (id optional if only one is queued)"
     ;;
 esac
