@@ -15,3 +15,6 @@ provisioning/collections/
 # Deploy logs (contain internal infrastructure IPs)
 log.txt
 *.log
+
+# Training definitions: imported in the CyberRangeCZ UI, not kept in the repo
+*-training.json

@@ -39,7 +39,7 @@ deployment, command logging, secrets) are aligned with the real NG-SOC sandbox:
         ├── student_ws/               # Cyber Range console: brief, toolkit, cacao-client, cr-compile
         ├── evaluation_reporting/     # compiled-report ingest + training summary
         ├── scenario_selftest/        # deploy-time 16-step self-test + instructor smoke-test
-        ├── all/                      # Kali rsyslog fix + command logging
+        ├── all/                      # Kali rsyslog/libfastjson fix
         └── man/                      # syslog-ng forwarding (mgmt node)
 ```
 
@@ -142,7 +142,20 @@ ansible-playbook --syntax-check playbook.yml
 
 ## Run the CACAO workflow
 
-Training definition: `V3_puc2-subcase2d-cacao-malicious-ip-block-training.json`.
+Training definition: `V4_puc2-subcase2d-cacao-malicious-ip-block-training.json`
+(35 levels). It is **not** kept in this repository (`*-training.json` is
+git-ignored): the platform does not read it from Git, it is imported in the
+CyberRangeCZ UI (Training Definitions) and linked to this Sandbox Definition.
+
+| Version | Change |
+|---------|--------|
+| V4 (current) | Level 3 ends with: **Note:** In small screens, to see the topology better, zoom out the page in the browser. |
+| V3 | Revised UML: Student / NG-SOAR Operator / Cyber Range duties; nodes reached through the topology GUI console |
+
+People reach nodes only through the topology GUI (right-click the node ->
+**Open console**): the Student works in the `student-ws` console and, in levels
+27-28, acts as NG-SOAR Operator in the `ng-soar` console. No graphical desktop is
+needed.
 
 ```sh
 # Student (student-ws)
