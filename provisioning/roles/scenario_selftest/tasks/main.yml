@@ -170,6 +170,13 @@
       changed_when: false
       failed_when: false
 
+    - name: "Level 3 - the trainee account on student-ws has a console password"
+      ansible.builtin.command:
+        cmd: "passwd -S ubuntu"
+      register: st_student_passwd
+      changed_when: false
+      delegate_to: student-ws
+
     - name: "Level 26/27 - the Student account cannot read the operator token"
       ansible.builtin.command:
         cmd: "runuser -u ubuntu -- test -r /etc/ng-soar/operator.token"
@@ -177,16 +184,18 @@
       changed_when: false
       failed_when: false
 
-    - name: Assert the NG-SOAR Operator console is ready for the trainee
+    - name: Assert the trainee and NG-SOAR Operator consoles are ready
       ansible.builtin.assert:
         that:
           - st_op_passwd.stdout.split()[1] == "P"
+          - st_student_passwd.stdout.split()[1] == "P"
           - st_op_cli.rc == 0
           - selftest_id in st_op_cli.stdout
           - st_student_token.rc != 0
         fail_msg: >-
           SELFTEST: NG-SOAR Operator console not ready.
           passwd -S={{ st_op_passwd.stdout | default('?') }} ;
+          student-ws ubuntu passwd -S={{ st_student_passwd.stdout | default('?') }} ;
           'soar-operator queue' as {{ soar_operator_user }} rc={{ st_op_cli.rc | default('?') }}
           stderr={{ st_op_cli.stderr | default('') }} ;
           student can read token={{ st_student_token.rc | default('?') == 0 }}.

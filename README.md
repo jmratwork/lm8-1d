@@ -142,20 +142,27 @@ ansible-playbook --syntax-check playbook.yml
 
 ## Run the CACAO workflow
 
-Training definition: `V4_puc2-subcase2d-cacao-malicious-ip-block-training.json`
+Training definition: `V5_puc2-subcase2d-cacao-malicious-ip-block-training.json`
 (35 levels). It is **not** kept in this repository (`*-training.json` is
 git-ignored): the platform does not read it from Git, it is imported in the
 CyberRangeCZ UI (Training Definitions) and linked to this Sandbox Definition.
 
 | Version | Change |
 |---------|--------|
-| V4 (current) | Level 3 ends with: **Note:** In small screens, to see the topology better, zoom out the page in the browser. |
+| V5 (current) | Level 3 gives the `student-ws` console login (`ubuntu` / `qwerty!23`) |
+| V4 | Level 3 ends with: **Note:** In small screens, to see the topology better, zoom out the page in the browser. |
 | V3 | Revised UML: Student / NG-SOAR Operator / Cyber Range duties; nodes reached through the topology GUI console |
 
 People reach nodes only through the topology GUI (right-click the node ->
 **Open console**): the Student works in the `student-ws` console and, in levels
 27-28, acts as NG-SOAR Operator in the `ng-soar` console. No graphical desktop is
 needed.
+
+| Console | Login | Set by |
+|---------|-------|--------|
+| `student-ws` (Student) | `ubuntu` / `qwerty!23` | `student_ws` role, `ubuntu_password_hash` in `vault.yml` |
+| `ng-soar` (NG-SOAR Operator) | `soar-operator` / `Operator2d!` | `ng_soar` role, `soar_operator_password` in `vault.yml` |
+| `ng-soar` (instructor smoke-test) | `ubuntu` / `qwerty!23` | `docker_server` role, `ubuntu_password_hash` |
 
 ```sh
 # Student (student-ws)

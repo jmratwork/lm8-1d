@@ -285,3 +285,14 @@ Operator in the `ng-soar` console, so the self-test now also asserts:
 - the `ubuntu` (Student-equivalent) account cannot read `/etc/ng-soar/operator.token`.
 The interactive console password login itself still needs a manual check.
 
+## 13. Trainee console login on student-ws (found while recording the demo)
+
+Recording a playthrough (2026-10-11) stopped at level 3: the `student-ws` console
+asks for a password and `ubuntu` had none there (only `ng-soar` got
+`ubuntu_password_hash`, via `docker_server`), so no trainee could log in. The
+self-test never noticed because Ansible uses key-based SSH. Fix:
+- `student_ws` sets the `ubuntu` password from `ubuntu_password_hash`
+  (`qwerty!23`, the platform convention, same as `ng-soar`);
+- the self-test asserts `passwd -S ubuntu` = `P` on `student-ws`;
+- training V5 (local only) gives the login in level 3.
+

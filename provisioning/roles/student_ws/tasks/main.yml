@@ -2,12 +2,21 @@
 # =============================================================================
 # role: student_ws
 # Hands-on Educational Platform (Cyber Range) trainee console:
+#   - console login for the trainee (ubuntu, password from vault.yml)
 #   - exercise brief + detection evidence            (UML 3)
 #   - templates, schema hints, firewall commands      (UML 5)
 #   - cacao-client: Student side of UML 4, 6, 9, 14, 16
 #   - cr-compile: compiles results for Evaluation     (UML 15)
 # Host image is ubuntu-noble-x86_64 (mgmt_user: ubuntu).
 # =============================================================================
+
+- name: Set the console password of the trainee account (ubuntu)
+  # The trainee logs in on the student-ws node console from the topology GUI,
+  # which asks for a password; without one the training cannot start (level 3).
+  ansible.builtin.user:
+    name: ubuntu
+    password: "{{ ubuntu_password_hash }}"
+    update_password: always
 
 - name: Install client tooling
   ansible.builtin.apt:
