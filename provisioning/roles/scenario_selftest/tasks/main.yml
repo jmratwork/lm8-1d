@@ -25,6 +25,14 @@
     group: root
     mode: "0750"
 
+- name: Install the instructor scenario reset (KMS, reports, lab-target rules)
+  ansible.builtin.copy:
+    src: scenario-reset.sh
+    dest: /usr/local/sbin/scenario-reset.sh
+    owner: root
+    group: root
+    mode: "0750"
+
 - name: Create the instructor share for the smoke-test
   ansible.builtin.file:
     path: /usr/local/share/cacao-training

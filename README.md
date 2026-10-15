@@ -142,14 +142,15 @@ ansible-playbook --syntax-check playbook.yml
 
 ## Run the CACAO workflow
 
-Training definition: `V5_puc2-subcase2d-cacao-malicious-ip-block-training.json`
+Training definition: `V6_puc2-subcase2d-cacao-malicious-ip-block-training.json`
 (35 levels). It is **not** kept in this repository (`*-training.json` is
 git-ignored): the platform does not read it from Git, it is imported in the
 CyberRangeCZ UI (Training Definitions) and linked to this Sandbox Definition.
 
 | Version | Change |
 |---------|--------|
-| V5 (current) | Level 3 gives the `student-ws` console login (`ubuntu` / `qwerty!23`) |
+| V6 (current) | Level 28 adds a hint for the `enforcement-unreachable` status |
+| V5 | Level 3 gives the `student-ws` console login (`ubuntu` / `qwerty!23`) |
 | V4 | Level 3 ends with: **Note:** In small screens, to see the topology better, zoom out the page in the browser. |
 | V3 | Revised UML: Student / NG-SOAR Operator / Cyber Range duties; nodes reached through the topology GUI console |
 
@@ -188,6 +189,10 @@ A reference solution is provided at
 `provisioning/roles/student_ws/files/cacao-toolkit/sample_block_ip_playbook.json`.
 Instructor check (on ng-soar, before trainees start):
 `sudo /usr/local/sbin/scenario-smoketest.sh`.
+
+New run on the same sandbox: run `sudo /usr/local/sbin/scenario-reset.sh` on
+ng-soar (KMS, evaluation reports, lab-target rules) and
+`sudo /usr/local/sbin/student-ws-reset.sh` on student-ws (trainee workspace).
 
 ## Secrets management
 

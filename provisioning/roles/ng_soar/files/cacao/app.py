@@ -33,6 +33,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # --- Environment (injected by docker-compose) --------------------------------
@@ -311,14 +312,24 @@ def execute_cacao(pb):
 
     # UML step 12: apply the block on the Lab Target Service (nftables input).
     # Ensure the base table/chain exists, then append the source-IP drop rule.
-    _ssh(ENFORCE_HOST, ENFORCE_USER, "sudo nft add table inet filter")
-    _ssh(ENFORCE_HOST, ENFORCE_USER,
-         "sudo nft 'add chain inet filter input { type filter hook input priority 0 ; policy accept ; }'")
     nft_cmd = (f"sudo nft add rule inet filter input ip saddr {source_ip} "
                f"counter drop comment \\\"cacao-block-{source_ip}\\\"")
-    rc, out, err = _ssh(ENFORCE_HOST, ENFORCE_USER, nft_cmd)
-    step("applied host firewall rule on the Lab Target Service (UML 12)",
+    rc, out, err = _ssh(ENFORCE_HOST, ENFORCE_USER, "sudo nft add table inet filter")
+    if rc != SSH_FAILED:   # reachable: ensure the chain, then append the drop rule
+        _ssh(ENFORCE_HOST, ENFORCE_USER,
+             "sudo nft 'add chain inet filter input { type filter hook input priority 0 ; policy accept ; }'")
+        rc, out, err = _ssh(ENFORCE_HOST, ENFORCE_USER, nft_cmd)
+    step("host firewall rule on the Lab Target Service (UML 12)"
+         + (" applied" if rc == 0 else " NOT applied"),
          host=ENFORCE_HOST, command=nft_cmd, rc=rc, stdout=out, stderr=err)
+
+    if rc == SSH_FAILED:
+        # The management SSH to lab-target never came up: nothing was applied,
+        # so there is nothing to verify or to collect as evidence.
+        step("could not reach the enforcement point over SSH after retries; "
+             "no rule was applied (check lab-target's sshd)", host=ENFORCE_HOST)
+        return _report(pb, verdict, source_ip, "enforcement-unreachable", "",
+                       False, "skipped", "NOT-APPLIED", log)
 
     # UML step 13: verify the block by probing the target FROM the malicious IP.
     # Deterministic output: the remote command prints exactly REACHABLE or BLOCKED.
@@ -343,6 +354,11 @@ def execute_cacao(pb):
     step("captured host firewall evidence (lab-target input chain)", rc=rc2, stderr=err2)
 
     status = "success" if (rc == 0 and blocked) else "completed-with-warnings"
+    return _report(pb, verdict, source_ip, status, ruleset, blocked, verify_state,
+                   probe_output, log)
+
+
+def _report(pb, verdict, source_ip, status, ruleset, blocked, verify_state, probe_output, log):
     return {
         "status": status,                       # UML step 14 payload
         "playbook_id": pb.get("id"),
@@ -359,13 +375,29 @@ def execute_cacao(pb):
     }
 
 
+SSH_FAILED = 255           # ssh's own exit code: connection/handshake failure
+SSH_TRIES = 3              # a transient reset (e.g. a busy sshd) gets retried
+SSH_BACKOFF = (2, 5)       # seconds to wait before the 2nd and 3rd attempt
+
+
 def _ssh(host, user, command):
+    """Run a command over SSH. Retries only when ssh itself fails (rc 255),
+    i.e. the remote command never ran, so retrying is always safe."""
     cmd = SSH_BASE + [f"{user}@{host}", command]
-    try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        return p.returncode, p.stdout.strip(), p.stderr.strip()
-    except Exception as e:  # noqa: BLE001
-        return 255, "", f"ssh error: {e}"
+    rc, out, err = SSH_FAILED, "", ""
+    for attempt in range(SSH_TRIES):
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            rc, out, err = p.returncode, p.stdout.strip(), p.stderr.strip()
+        except Exception as e:  # noqa: BLE001
+            rc, out, err = SSH_FAILED, "", f"ssh error: {e}"
+        if rc != SSH_FAILED:
+            break
+        if attempt < SSH_TRIES - 1:
+            time.sleep(SSH_BACKOFF[attempt])
+    if rc == SSH_FAILED:
+        err = f"{err} (after {SSH_TRIES} attempts)".strip()
+    return rc, out, err
 
 
 def _persist(report):

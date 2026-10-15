@@ -35,6 +35,22 @@
     - nginx
     - ssh
 
+# --- sshd: keep the management channel usable under the attacker's probes ----
+# sshd is how NG-SOAR applies the block (UML 12). The attacker also probes
+# port 22, so raise the unauthenticated-connection limits and shorten the grace
+# time, so scans cannot starve the executor ("Connection reset by peer").
+# sshd_config.d is included at the top of sshd_config, so these values win.
+- name: Raise sshd connection limits on the enforcement point
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/50-lab-target-limits.conf
+    mode: "0644"
+    content: |
+      # Managed by the lab_target role (PUC2 2d): protects NG-SOAR's management SSH.
+      MaxStartups 100:30:300
+      LoginGraceTime 30
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: restart ssh
+
 # --- Host-based firewall (nftables input chain) -----------------------------
 - name: Deploy base nftables ruleset (input policy accept)
   ansible.builtin.copy:

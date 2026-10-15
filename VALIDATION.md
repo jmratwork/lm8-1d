@@ -296,3 +296,21 @@ self-test never noticed because Ansible uses key-based SSH. Fix:
 - the self-test asserts `passwd -S ubuntu` = `P` on `student-ws`;
 - training V5 (local only) gives the login in level 3.
 
+## 14. Enforcement SSH starved by the attacker's port scan (2026-10-15)
+
+During a demo run the operator's execution failed twice with
+`kex_exchange_identification: read: Connection reset by peer` from lab-target
+port 22 (rc 255): no rule was applied, the probe stayed `REACHABLE`. NG-SOAR could
+still SSH to the attacker, so the fault was lab-target's sshd, which had been
+probed every second (`nc -z :22`) since the sandbox was deployed. Fixes:
+- attacker probes port 22 once a minute (HTTP probing unchanged);
+- lab-target raises `MaxStartups 100:30:300` and `LoginGraceTime 30`
+  (`sshd_config.d`, validated with `sshd -t`);
+- the executor retries SSH up to 3 times on rc 255 and, if lab-target stays
+  unreachable, returns `enforcement-unreachable` (skips probe and evidence)
+  instead of a misleading `completed-with-warnings`.
+
+New training runs can reuse the same sandbox and inherit the previous run's
+playbooks, reports and rules. Instructor resets added:
+`scenario-reset.sh` (ng-soar) and `student-ws-reset.sh` (student-ws).
+

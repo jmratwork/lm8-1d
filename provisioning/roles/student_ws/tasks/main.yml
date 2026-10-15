@@ -59,6 +59,34 @@
     group: ubuntu
     mode: "0644"
 
+- name: Create the pristine workspace directory (instructor reset)
+  ansible.builtin.file:
+    path: /usr/local/share/cacao-training/student-ws
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep a pristine copy of the workspace (instructor reset)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /usr/local/share/cacao-training/student-ws/
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - EXERCISE_BRIEF.md
+    - detected_traffic.log
+    - cacao-toolkit/
+
+- name: Install the instructor workspace reset (student-ws)
+  ansible.builtin.copy:
+    src: student-ws-reset.sh
+    dest: /usr/local/sbin/student-ws-reset.sh
+    owner: root
+    group: root
+    mode: "0750"
+
 - name: Install the cacao-client helper
   ansible.builtin.copy:
     src: cacao-client.sh
